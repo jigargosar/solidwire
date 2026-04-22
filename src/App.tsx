@@ -28,7 +28,7 @@ export default function App() {
         <main class="relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900">
 
             {/* LIFTED SIDEBAR: Shadow on all directions */}
-            <aside class="absolute top-3 left-3 bottom-3 w-36 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]">
+            <aside class="absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]">
                 <div class="flex flex-col gap-3">
                     <div class="group aspect-square w-full rounded-lg border border-gray-300 bg-gray-50 p-2 hover:border-blue-500 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm">
                         <svg viewBox="0 0 80 40" class="w-full">
