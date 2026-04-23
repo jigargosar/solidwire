@@ -12,7 +12,7 @@ import {
     finishDrawing
 } from "./model";
 import { tools } from "./tools";
-import { toPath } from "./utils";
+import { toPath } from "./rough-utils";
 
 let canvasRef: SVGSVGElement | undefined;
 
