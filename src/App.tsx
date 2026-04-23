@@ -3,102 +3,101 @@ import { createStore } from "solid-js/store";
 import rough from "roughjs";
 import { toPath } from "./utils";
 
+// --- 1. CONFIG & CONSTANTS ---
+const generator = rough.generator();
+const strokeColor = '#374151';
+let canvasRef: SVGSVGElement | undefined;
+
+// --- 2. STATE (The Model) ---
+const [activeTool, setActiveTool] = createSignal<string | null>(null);
+const [widgets, setWidgets] = createStore([
+    { id: 1, type: 'rect', x: 300, y: 100, w: 200, h: 150 },
+    { id: 2, type: 'button', x: 600, y: 300, w: 240, h: 80 }
+]);
+
+const [draggingId, setDraggingId] = createSignal<number | null>(null);
+const [drawingStart, setDrawingStart] = createSignal<{ x: number, y: number } | null>(null);
+const [currentMouse, setCurrentMouse] = createSignal<{ x: number, y: number } | null>(null);
+
+// --- 3. DRAWABLES ---
+const getRectPath = (w: number, h: number) =>
+    toPath(generator.rectangle(0, 0, w, h, { roughness: 1.2, stroke: strokeColor, strokeWidth: 2 }));
+
+const getButtonPath = (w: number, h: number) =>
+    toPath(generator.rectangle(0, 0, w, h, { roughness: 1.5, stroke: strokeColor, strokeWidth: 2 }));
+
+const miniRect = createMemo(() =>
+    generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
+);
+
+const miniButton = createMemo(() =>
+    generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
+);
+
+// --- 4. ACTIONS (The Logic) ---
+const getCursor = (e: MouseEvent | PointerEvent, svg: SVGSVGElement) => {
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    return pt.matrixTransform(svg.getScreenCTM()?.inverse());
+};
+
+const onPointerDown = (e: PointerEvent) => {
+    const tool = activeTool();
+    if (!canvasRef) return;
+    const cursor = getCursor(e, canvasRef);
+
+    if (tool === 'rect') {
+        setDrawingStart({ x: cursor.x, y: cursor.y });
+        setCurrentMouse({ x: cursor.x, y: cursor.y });
+    } else if (tool === 'button') {
+        setWidgets([...widgets, { id: Date.now(), type: 'button', x: cursor.x - 120, y: cursor.y - 40, w: 240, h: 80 }]);
+    }
+};
+
+const onPointerMove = (e: PointerEvent) => {
+    if (!canvasRef) return;
+    const cursor = getCursor(e, canvasRef);
+    
+    const dId = draggingId();
+    if (dId !== null) {
+        const widget = widgets.find(w => w.id === dId);
+        if (widget && widget.type === 'rect') {
+            setWidgets(w => w.id === dId, { x: cursor.x - widget.w / 2, y: cursor.y - widget.h / 2 });
+        }
+    }
+
+    if (drawingStart()) {
+        setCurrentMouse({ x: cursor.x, y: cursor.y });
+    }
+};
+
+const onPointerUp = () => {
+    const start = drawingStart();
+    const end = currentMouse();
+    
+    if (start && end && activeTool() === 'rect') {
+        const x = Math.min(start.x, end.x);
+        const y = Math.min(start.y, end.y);
+        const w = Math.abs(start.x - end.x);
+        const h = Math.abs(start.y - end.y);
+        
+        if (w > 5 && h > 5) {
+            setWidgets([...widgets, { id: Date.now(), type: 'rect', x, y, w, h }]);
+        }
+    }
+
+    setDrawingStart(null);
+    setCurrentMouse(null);
+    setDraggingId(null);
+};
+
+const toggleTool = (tool: string) => {
+    setActiveTool(current => current === tool ? null : tool);
+};
+
+// --- 5. VIEW (The App Component) ---
 export default function App() {
-    const generator = rough.generator();
-    const strokeColor = '#374151';
-
-    let canvasRef: SVGSVGElement | undefined;
-
-    const [activeTool, setActiveTool] = createSignal<string | null>(null);
-    const [widgets, setWidgets] = createStore([
-        { id: 1, type: 'rect', x: 300, y: 100, w: 200, h: 150 },
-        { id: 2, type: 'button', x: 600, y: 300, w: 240, h: 80 }
-    ]);
-
-    const [draggingId, setDraggingId] = createSignal<number | null>(null);
-    const [drawingStart, setDrawingStart] = createSignal<{ x: number, y: number } | null>(null);
-    const [currentMouse, setCurrentMouse] = createSignal<{ x: number, y: number } | null>(null);
-
-    // --- DRAWABLES ---
-    const getRectPath = (w: number, h: number) =>
-        toPath(generator.rectangle(0, 0, w, h, { roughness: 1.2, stroke: strokeColor, strokeWidth: 2 }));
-
-    const getButtonPath = (w: number, h: number) =>
-        toPath(generator.rectangle(0, 0, w, h, { roughness: 1.5, stroke: strokeColor, strokeWidth: 2 }));
-
-    const miniRect = createMemo(() =>
-        generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-    );
-
-    const miniButton = createMemo(() =>
-        generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-    );
-
-    // --- UTILS ---
-    const getCursor = (e: MouseEvent | PointerEvent, svg: SVGSVGElement) => {
-        const pt = svg.createSVGPoint();
-        pt.x = e.clientX;
-        pt.y = e.clientY;
-        return pt.matrixTransform(svg.getScreenCTM()?.inverse());
-    };
-
-    // --- HANDLERS ---
-    const onPointerDown = (e: PointerEvent) => {
-        const tool = activeTool();
-        if (!canvasRef) return;
-        const cursor = getCursor(e, canvasRef);
-
-        if (tool === 'rect') {
-            setDrawingStart({ x: cursor.x, y: cursor.y });
-            setCurrentMouse({ x: cursor.x, y: cursor.y });
-        } else if (tool === 'button') {
-            setWidgets([...widgets, { id: Date.now(), type: 'button', x: cursor.x - 120, y: cursor.y - 40, w: 240, h: 80 }]);
-        }
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-        if (!canvasRef) return;
-        const cursor = getCursor(e, canvasRef);
-        
-        // Handle Dragging
-        const dId = draggingId();
-        if (dId !== null) {
-            const widget = widgets.find(w => w.id === dId);
-            if (widget && widget.type === 'rect') {
-                setWidgets(w => w.id === dId, { x: cursor.x - widget.w / 2, y: cursor.y - widget.h / 2 });
-            }
-        }
-
-        // Handle Drawing
-        if (drawingStart()) {
-            setCurrentMouse({ x: cursor.x, y: cursor.y });
-        }
-    };
-
-    const onPointerUp = () => {
-        const start = drawingStart();
-        const end = currentMouse();
-        
-        if (start && end && activeTool() === 'rect') {
-            const x = Math.min(start.x, end.x);
-            const y = Math.min(start.y, end.y);
-            const w = Math.abs(start.x - end.x);
-            const h = Math.abs(start.y - end.y);
-            
-            if (w > 5 && h > 5) {
-                setWidgets([...widgets, { id: Date.now(), type: 'rect', x, y, w, h }]);
-            }
-        }
-
-        setDrawingStart(null);
-        setCurrentMouse(null);
-        setDraggingId(null);
-    };
-
-    const toggleTool = (tool: string) => {
-        setActiveTool(current => current === tool ? null : tool);
-    };
-
     const handleKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') setActiveTool(null);
     };
@@ -111,10 +110,8 @@ export default function App() {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
         >
-            {/* SIDEBAR */}
             <aside class="absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]">
                 <div class="flex flex-col gap-3">
-                    {/* Rect Drawing Tool */}
                     <div 
                         onClick={() => toggleTool('rect')}
                         class={`group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${activeTool() === 'rect' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'}`}
@@ -125,7 +122,6 @@ export default function App() {
                         </svg>
                     </div>
 
-                    {/* Button Stamping Tool */}
                     <div 
                         onClick={() => toggleTool('button')}
                         class={`group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${activeTool() === 'button' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'}`}
@@ -138,7 +134,6 @@ export default function App() {
                 </div>
             </aside>
 
-            {/* CANVAS */}
             <svg 
                 ref={canvasRef}
                 class={`h-full w-full block bg-gray-100 ${activeTool() ? 'cursor-crosshair' : ''}`}
@@ -151,7 +146,6 @@ export default function App() {
                 </defs>
                 <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
-                {/* Drawn Widgets */}
                 <For each={widgets}>{(w) => (
                     <g 
                         transform={`translate(${w.x}, ${w.y})`} 
@@ -176,7 +170,6 @@ export default function App() {
                     </g>
                 )}</For>
 
-                {/* Drawing Preview */}
                 {drawingStart() && currentMouse() && (
                     <path 
                         d={getRectPath(
