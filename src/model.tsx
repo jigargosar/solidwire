@@ -32,13 +32,14 @@ export type WidgetVM = RectVM | ButtonVM;
 
 // state
 
-type State = { widgets: Widget[] }
+type Model = { widgets: Widget[] }
 
-export const state: State = {widgets: []}
+const state: Model = {widgets: []}
+
 
 export const widgetVMs: WidgetVM[] = toVM(state.widgets)
 
-export function toVM(ws: Widget[]): WidgetVM[] {
+function toVM(ws: Widget[]): WidgetVM[] {
     return ws.map(w => {
         switch (w.kind) {
             case "rect":
