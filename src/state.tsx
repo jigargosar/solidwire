@@ -7,33 +7,44 @@ export type Box = { pos: Point; size: Dimension };
 type WidgetId = string; // UUID only
 type WidgetBase = { id: WidgetId; kind: string };
 
-// Internal specifics
+// Rect
 type RectWidget = WidgetBase & { kind: "rect"; box: Box };
-type ButtonWidget = WidgetBase & { kind: "button"; box: Box };
-
-// Union (internal)
-type Widget = RectWidget | ButtonWidget;
-
-// --- VM types (exposed) ---
 export type RectVM = { kind: "rect"; id: WidgetId; box: Box };
-export type ButtonVM = { kind: "button"; id: WidgetId; box: Box };
-export type WidgetVM = RectVM | ButtonVM;
 
-// --- VM constructors ---
 function rectToVM(w: RectWidget): RectVM {
-    return { kind: "rect", id: w.id, box: w.box };
+    return {kind: "rect", id: w.id, box: w.box};
 }
+
+// Btn
+type ButtonWidget = WidgetBase & { kind: "button"; box: Box };
+export type ButtonVM = { kind: "button"; id: WidgetId; box: Box };
 
 function buttonToVM(w: ButtonWidget): ButtonVM {
-    return { kind: "button", id: w.id, box: w.box };
+    return {kind: "button", id: w.id, box: w.box};
 }
 
-// --- Delegating projection ---
+// Union Types
+
+type Widget = RectWidget | ButtonWidget;
+
+export type WidgetVM = RectVM | ButtonVM;
+
+
+// state
+
+type State = { widgets: Widget[] }
+
+export const state: State = {widgets: []}
+
+export const widgetVMs: WidgetVM[] = toVM(state.widgets)
+
 export function toVM(ws: Widget[]): WidgetVM[] {
     return ws.map(w => {
         switch (w.kind) {
-            case "rect": return rectToVM(w);
-            case "button": return buttonToVM(w);
+            case "rect":
+                return rectToVM(w);
+            case "button":
+                return buttonToVM(w);
         }
     });
 }
