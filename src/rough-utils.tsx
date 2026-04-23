@@ -1,7 +1,7 @@
 import rough from "roughjs";
 import {Drawable} from "roughjs/bin/core";
 
-const generator = rough.generator();
+export const generator = rough.generator();
 
 export function renderDrawable(drawable: Drawable) {
     return generator.toPaths(drawable).map((p) => (
