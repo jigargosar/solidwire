@@ -1,83 +1,70 @@
+// model.ts
 import { createSignal } from "solid-js";
-import { createStore } from "solid-js/store";
 
 // --- Types ---
-export type Point = { x: number; y: number };
-
-export type Widget =
-    | { id: number; type: "rect"; x: number; y: number; w: number; h: number }
-    | { id: number; type: "button"; x: number; y: number; w: number; h: number };
+export type ToolKind = "rect" | "button";
 
 export type Interaction =
     | { kind: "idle" }
     | { kind: "drawing"; start: Point; current: Point }
-    | { kind: "dragging"; id: number }
-    | { kind: "placing" };
+    | { kind: "dragging"; id: string; current: Point };
 
-// --- Store ---
-const [activeTool, setActiveTool] = createSignal<string | null>(null);
-const [widgets, setWidgets] = createStore<Widget[]>([
-    { id: 1, type: "rect", x: 300, y: 100, w: 200, h: 150 },
-    { id: 2, type: "button", x: 600, y: 300, w: 240, h: 80 }
-]);
+export type Point = { x: number; y: number };
+
+export type Widget =
+    | { type: "rect"; id: string; x: number; y: number; w: number; h: number }
+    | { type: "button"; id: string; x: number; y: number; w: number; h: number };
+
+// --- Signals ---
+const [activeTool, setActiveTool] = createSignal<ToolKind | "">("");
+const [widgets, setWidgets] = createSignal<Widget[]>([]);
 const [interaction, setInteraction] = createSignal<Interaction>({ kind: "idle" });
 
-// --- Getters ---
-export const getActiveTool = () => activeTool();
-export const getWidgets = () => widgets;
-export const getInteraction = () => interaction();
+// --- Accessors ---
+export const getActiveTool = activeTool;
+export const getWidgets = widgets;
+export const getInteraction = interaction;
 
 // --- Actions ---
-export function toggleTool(tool: string) {
-    setActiveTool((cur) => (cur === tool ? null : tool));
+export function toggleTool(tool: ToolKind | "") {
+    setActiveTool(tool);
 }
 
-export function startDrawing(p: Point) {
-    setInteraction({ kind: "drawing", start: p, current: p });
+export function startDrawing(start: Point) {
+    setInteraction({ kind: "drawing", start, current: start });
 }
 
-export function updateDrawing(p: Point) {
+export function updateDrawing(current: Point) {
     const i = interaction();
     if (i.kind === "drawing") {
-        setInteraction({ kind: "drawing", start: i.start, current: p });
+        setInteraction({ ...i, current });
     }
 }
 
 export function finishDrawing() {
     const i = interaction();
     if (i.kind === "drawing") {
+        const w = Math.abs(i.current.x - i.start.x);
+        const h = Math.abs(i.current.y - i.start.y);
         const x = Math.min(i.start.x, i.current.x);
         const y = Math.min(i.start.y, i.current.y);
-        const w = Math.abs(i.start.x - i.current.x);
-        const h = Math.abs(i.start.y - i.current.y);
-        if (w > 5 && h > 5) {
-            setWidgets([...widgets, { id: Date.now(), type: "rect", x, y, w, h }]);
-        }
+        setWidgets([...widgets(), { type: "rect", id: crypto.randomUUID(), x, y, w, h }]);
     }
-    setInteraction({ kind: "idle" });
 }
 
-export function stampButton(p: Point) {
-    setWidgets([
-        ...widgets,
-        { id: Date.now(), type: "button", x: p.x - 120, y: p.y - 40, w: 240, h: 80 }
-    ]);
+export function stampButton(cursor: Point) {
+    setWidgets([...widgets(), { type: "button", id: crypto.randomUUID(), x: cursor.x, y: cursor.y, w: 80, h: 40 }]);
 }
 
-export function startDrag(id: number) {
-    setInteraction({ kind: "dragging", id });
+export function startDrag(id: string) {
+    setInteraction({ kind: "dragging", id, current: { x: 0, y: 0 } });
 }
 
-export function updateDrag(p: Point) {
+export function updateDrag(cursor: Point) {
     const i = interaction();
     if (i.kind === "dragging") {
-        const w = widgets.find((w) => w.id === i.id);
-        if (w && w.type === "rect") {
-            setWidgets(
-                (w2) => w2.id === i.id,
-                { x: p.x - w.w / 2, y: p.y - w.h / 2 }
-            );
-        }
+        setInteraction({ ...i, current: cursor });
+        // TODO: update widget position here
     }
 }
 
