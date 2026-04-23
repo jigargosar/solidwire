@@ -1,4 +1,4 @@
-import { For, createMemo, onCleanup } from "solid-js";
+import { For, onCleanup } from "solid-js";
 import rough from "roughjs";
 import { toPath } from "./utils";
 import {
@@ -33,13 +33,9 @@ const getRectPath = (w: number, h: number) =>
 const getButtonPath = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, { roughness: 1.5, stroke: strokeColor, strokeWidth: 2 }));
 
-const miniRect = createMemo(() =>
-    generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-);
-
-const miniButton = createMemo(() =>
-    generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-);
+// Precomputed mini shapes (no reactivity needed)
+const miniRect = generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 });
+const miniButton = generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 });
 
 // --- Handlers ---
 const onPointerDown = (e: PointerEvent) => {
@@ -92,7 +88,7 @@ export default function App() {
                         }`}
                     >
                         <svg viewBox="0 0 80 40" class="w-full">
-                            <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5" />
+                            <path d={toPath(miniRect)} fill="none" stroke={strokeColor} stroke-width="1.5" />
                             <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[10px] fill-gray-600 select-none font-bold">Rect</text>
                         </svg>
                     </div>
@@ -106,7 +102,7 @@ export default function App() {
                         }`}
                     >
                         <svg viewBox="0 0 80 40" class="w-full">
-                            <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5" />
+                            <path d={toPath(miniButton)} fill="none" stroke={strokeColor} stroke-width="1.5" />
                             <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[10px] fill-gray-600 select-none font-bold">Button</text>
                         </svg>
                     </div>
