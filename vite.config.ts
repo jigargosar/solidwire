@@ -11,7 +11,7 @@ export default defineConfig({
             "locator": {
                 "targetIDE": "vscode",
                 "componentLocation":true,
-                "key":"Alt",
+                "key":"Control",
                 "jsxLocation" : true,
             },
 
