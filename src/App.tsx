@@ -28,7 +28,7 @@ type Mode =
     | { tag: 'idle' }
     | { tag: 'armed'; tool: Tool }
     | { tag: 'drawing'; start: Point; current: Point }
-    | { tag: 'dragging'; id: number };
+    | { tag: 'dragging'; id: number; offset: Point };
 
 // --- MODEL ---
 function createModel() {
@@ -86,28 +86,19 @@ function createModel() {
         }
     };
 
-    const widgetPointerDown = (id: number) => {
-        if (mode().tag === 'idle') setMode({ tag: 'dragging', id });
+    const widgetPointerDown = (id: number, cursor: Point) => {
+        if (mode().tag !== 'idle') return;
+        const widget = widgets.find(w => w.id === id);
+        if (!widget) return;
+        setMode({ tag: 'dragging', id, offset: { x: cursor.x - widget.x, y: cursor.y - widget.y } });
     };
 
     const pointerMove = (p: Point) => {
         const m = mode();
         switch (m.tag) {
-            case 'dragging': {
-                const widget = widgets.find(w => w.id === m.id);
-                if (!widget) return;
-                switch (widget.tag) {
-                    case 'rect':
-                        setWidgets(w => w.id === m.id, { x: p.x - widget.w / 2, y: p.y - widget.h / 2 });
-                        return;
-                    case 'text':
-                        setWidgets(w => w.id === m.id, { x: p.x, y: p.y });
-                        return;
-                    case 'button':
-                        return;
-                    default: return assertNever(widget);
-                }
-            }
+            case 'dragging':
+                setWidgets(w => w.id === m.id, { x: p.x - m.offset.x, y: p.y - m.offset.y });
+                return;
             case 'drawing':
                 setMode({ tag: 'drawing', start: m.start, current: p });
                 return;
@@ -231,42 +222,34 @@ export default function App() {
                 <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
                 <For each={m.widgets}>{(w) => {
+                    const startDrag = (e: PointerEvent) => {
+                        if (m.mode().tag !== 'idle') return;
+                        const p = toLocal(e);
+                        if (!p) return;
+                        e.stopPropagation();
+                        m.widgetPointerDown(w.id, p);
+                    };
                     switch (w.tag) {
                         case 'rect':
                             return (
-                                <g
-                                    transform={`translate(${w.x}, ${w.y})`}
-                                    class="cursor-move"
-                                    onPointerDown={(e) => {
-                                        if (m.mode().tag === 'idle') {
-                                            e.stopPropagation();
-                                            m.widgetPointerDown(w.id);
-                                        }
-                                    }}
-                                >
-                                    <path d={getRectPath(w.w, w.h)} fill="white" fill-opacity={0.5} stroke={strokeColor} stroke-width="2.5" />
+                                <g transform={`translate(${w.x}, ${w.y})`} class={m.mode().tag === 'idle' ? 'cursor-move' : ''} onPointerDown={startDrag}>
+                                    <rect width={w.w} height={w.h} fill="transparent" />
+                                    <path d={getRectPath(w.w, w.h)} fill="white" fill-opacity={0.5} stroke={strokeColor} stroke-width="2.5" pointer-events="none" />
                                 </g>
                             );
                         case 'button':
                             return (
-                                <g transform={`translate(${w.x}, ${w.y})`}>
-                                    <path d={getButtonPath(w.w, w.h)} fill="none" stroke={strokeColor} stroke-width="2.5" />
-                                    <text x={w.w / 2} y={w.h / 2 + 10} text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">Button</text>
+                                <g transform={`translate(${w.x}, ${w.y})`} class={m.mode().tag === 'idle' ? 'cursor-move' : ''} onPointerDown={startDrag}>
+                                    <rect width={w.w} height={w.h} fill="transparent" />
+                                    <path d={getButtonPath(w.w, w.h)} fill="none" stroke={strokeColor} stroke-width="2.5" pointer-events="none" />
+                                    <text x={w.w / 2} y={w.h / 2 + 10} text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold" pointer-events="none">Button</text>
                                 </g>
                             );
                         case 'text':
                             return (
-                                <g
-                                    transform={`translate(${w.x}, ${w.y})`}
-                                    class="cursor-move"
-                                    onPointerDown={(e) => {
-                                        if (m.mode().tag === 'idle') {
-                                            e.stopPropagation();
-                                            m.widgetPointerDown(w.id);
-                                        }
-                                    }}
-                                >
-                                    <text style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">{w.content}</text>
+                                <g transform={`translate(${w.x}, ${w.y})`} class={m.mode().tag === 'idle' ? 'cursor-move' : ''} onPointerDown={startDrag}>
+                                    <rect x={-4} y={-24} width={w.content.length * 14 + 8} height={32} fill="transparent" />
+                                    <text style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold" pointer-events="none">{w.content}</text>
                                 </g>
                             );
                         default: return assertNever(w);
