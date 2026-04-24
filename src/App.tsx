@@ -131,6 +131,7 @@ export default function App() {
 
     const handleKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') m.cancel();
+        if (e.key === 'Delete' || e.key === 'Backspace') m.deleteSelected();
     };
     window.addEventListener('keydown', handleKey);
     onCleanup(() => window.removeEventListener('keydown', handleKey));

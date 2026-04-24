@@ -94,6 +94,14 @@ export function createModel() {
         setSelectedId(null);
     };
 
+    const deleteSelected = () => {
+        const id = selectedId();
+        if (!id) return;
+        if (mode().tag === 'dragging') return;
+        setWidgets(ws => ws.filter(w => w.id !== id));
+        setSelectedId(null);
+    };
+
     const canvasPointerDown = (p: Point) => {
         const m = mode();
         if (m.tag !== 'armed') {
@@ -183,6 +191,7 @@ export function createModel() {
         activeTool,
         toggleTool,
         cancel,
+        deleteSelected,
         canvasPointerDown,
         widgetPointerDown,
         pointerMove,
