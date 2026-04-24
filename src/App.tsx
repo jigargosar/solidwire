@@ -1,11 +1,14 @@
 import { createMemo, createSignal, For, onCleanup } from "solid-js";
 import { createStore } from "solid-js/store";
 import rough from "roughjs";
-import { toPath } from "./utils";
+import type { Drawable } from "roughjs/bin/core";
 
 // --- CONFIG ---
 const generator = rough.generator();
 const strokeColor = '#374151';
+
+const toPath = (drawable: Drawable) =>
+    generator.toPaths(drawable).map(p => p.d).join(' ');
 
 function assertNever(_: never): never {
     throw new Error('unreachable');
@@ -33,6 +36,18 @@ function createModel() {
         { tag: 'button', id: 2, x: 600, y: 300, w: 240, h: 80 },
     ]);
     const [mode, setMode] = createSignal<Mode>({ tag: 'idle' });
+
+    type Rect = { x: number; y: number; w: number; h: number };
+    const previewRect = createMemo<Rect | null>(() => {
+        const m = mode();
+        if (m.tag !== 'drawing') return null;
+        return {
+            x: Math.min(m.start.x, m.current.x),
+            y: Math.min(m.start.y, m.current.y),
+            w: Math.abs(m.start.x - m.current.x),
+            h: Math.abs(m.start.y - m.current.y),
+        };
+    });
 
     const activeTool = (): Tool | null => {
         const m = mode();
@@ -94,12 +109,9 @@ function createModel() {
         const m = mode();
         switch (m.tag) {
             case 'drawing': {
-                const x = Math.min(m.start.x, m.current.x);
-                const y = Math.min(m.start.y, m.current.y);
-                const w = Math.abs(m.start.x - m.current.x);
-                const h = Math.abs(m.start.y - m.current.y);
-                if (w > 5 && h > 5) {
-                    setWidgets(ws => [...ws, { tag: 'rect', id: Date.now(), x, y, w, h }]);
+                const r = previewRect();
+                if (r && r.w > 5 && r.h > 5) {
+                    setWidgets(ws => [...ws, { tag: 'rect', id: Date.now(), ...r }]);
                 }
                 setMode({ tag: 'armed', tool: 'rect' });
                 return;
@@ -116,6 +128,7 @@ function createModel() {
     return {
         widgets,
         mode,
+        previewRect,
         activeTool,
         toggleTool,
         cancel,
@@ -229,16 +242,12 @@ export default function App() {
                 }}</For>
 
                 {(() => {
-                    const mm = m.mode();
-                    if (mm.tag !== 'drawing') return null;
-                    const x = Math.min(mm.start.x, mm.current.x);
-                    const y = Math.min(mm.start.y, mm.current.y);
-                    const w = Math.abs(mm.start.x - mm.current.x);
-                    const h = Math.abs(mm.start.y - mm.current.y);
+                    const r = m.previewRect();
+                    if (!r) return null;
                     return (
                         <path
-                            d={getRectPath(w, h)}
-                            transform={`translate(${x}, ${y})`}
+                            d={getRectPath(r.w, r.h)}
+                            transform={`translate(${r.x}, ${r.y})`}
                             fill="none"
                             stroke={strokeColor}
                             stroke-dasharray="5,5"
