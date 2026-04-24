@@ -151,12 +151,8 @@ function createModel() {
     };
 }
 
-// --- DRAWABLES ---
-const getRectPath = (w: number, h: number) =>
+const roughRect = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, {roughness: 1.2, stroke: strokeColor, strokeWidth: 2}));
-
-const getButtonPath = (w: number, h: number) =>
-    toPath(generator.rectangle(0, 0, w, h, {roughness: 1.5, stroke: strokeColor, strokeWidth: 2}));
 
 // --- WIDGET COMPONENTS ---
 type RectW = Extract<Widget, { tag: 'rect' }>;
@@ -172,7 +168,7 @@ type WidgetProps<T> = {
 const cursorClass = (mode: Accessor<Mode>) => mode().tag === 'idle' ? 'cursor-move' : '';
 
 function RectWidget(props: WidgetProps<RectW>) {
-    const d = createMemo(() => getRectPath(props.w.w, props.w.h));
+    const d = createMemo(() => roughRect(props.w.w, props.w.h));
     return (
         <g transform={`translate(${props.w.x}, ${props.w.y})`}
            class={cursorClass(props.mode)}
@@ -184,7 +180,7 @@ function RectWidget(props: WidgetProps<RectW>) {
 }
 
 function ButtonWidget(props: WidgetProps<ButtonW>) {
-    const d = createMemo(() => getButtonPath(props.w.w, props.w.h));
+    const d = createMemo(() => roughRect(props.w.w, props.w.h));
     return (
         <g transform={`translate(${props.w.x}, ${props.w.y})`}
            class={cursorClass(props.mode)}
@@ -316,7 +312,7 @@ export default function App() {
                     if (!r) return null;
                     return (
                         <path
-                            d={getRectPath(r.w, r.h)}
+                            d={roughRect(r.w, r.h)}
                             transform={`translate(${r.x}, ${r.y})`}
                             fill="none"
                             stroke={strokeColor}
