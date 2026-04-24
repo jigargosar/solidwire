@@ -3,129 +3,183 @@ import { createStore } from "solid-js/store";
 import rough from "roughjs";
 import { toPath } from "./utils";
 
-// --- 1. CONFIG & CONSTANTS ---
+// --- CONFIG ---
 const generator = rough.generator();
 const strokeColor = '#374151';
-let canvasRef: SVGSVGElement | undefined;
 
-// --- 2. STATE (The Model) ---
-const [activeTool, setActiveTool] = createSignal<string | null>(null);
-const [widgets, setWidgets] = createStore([
-    { id: 1, type: 'rect', x: 300, y: 100, w: 200, h: 150 },
-    { id: 2, type: 'button', x: 600, y: 300, w: 240, h: 80 }
-]);
+function assertNever(_: never): never {
+    throw new Error('unreachable');
+}
 
-const [draggingId, setDraggingId] = createSignal<number | null>(null);
-const [drawingStart, setDrawingStart] = createSignal<{ x: number, y: number } | null>(null);
-const [currentMouse, setCurrentMouse] = createSignal<{ x: number, y: number } | null>(null);
+// --- TYPES ---
+type Point = { x: number; y: number };
 
-// --- 3. DRAWABLES ---
+type Widget =
+    | { tag: 'rect'; id: number; x: number; y: number; w: number; h: number }
+    | { tag: 'button'; id: number; x: number; y: number; w: number; h: number };
+
+type Tool = 'rect' | 'button';
+
+type Mode =
+    | { tag: 'idle' }
+    | { tag: 'armed'; tool: Tool }
+    | { tag: 'drawing'; start: Point; current: Point }
+    | { tag: 'dragging'; id: number };
+
+// --- MODEL ---
+function createModel() {
+    const [widgets, setWidgets] = createStore<Widget[]>([
+        { tag: 'rect', id: 1, x: 300, y: 100, w: 200, h: 150 },
+        { tag: 'button', id: 2, x: 600, y: 300, w: 240, h: 80 },
+    ]);
+    const [mode, setMode] = createSignal<Mode>({ tag: 'idle' });
+
+    const activeTool = (): Tool | null => {
+        const m = mode();
+        switch (m.tag) {
+            case 'armed': return m.tool;
+            case 'drawing': return 'rect';
+            case 'idle':
+            case 'dragging': return null;
+            default: return assertNever(m);
+        }
+    };
+
+    const toggleTool = (tool: Tool) => {
+        const m = mode();
+        if (m.tag === 'armed' && m.tool === tool) setMode({ tag: 'idle' });
+        else setMode({ tag: 'armed', tool });
+    };
+
+    const cancel = () => setMode({ tag: 'idle' });
+
+    const canvasPointerDown = (p: Point) => {
+        const m = mode();
+        if (m.tag !== 'armed') return;
+        switch (m.tool) {
+            case 'rect':
+                setMode({ tag: 'drawing', start: p, current: p });
+                return;
+            case 'button':
+                setWidgets(ws => [...ws, { tag: 'button', id: Date.now(), x: p.x - 120, y: p.y - 40, w: 240, h: 80 }]);
+                return;
+            default: return assertNever(m.tool);
+        }
+    };
+
+    const widgetPointerDown = (id: number) => {
+        if (mode().tag === 'idle') setMode({ tag: 'dragging', id });
+    };
+
+    const pointerMove = (p: Point) => {
+        const m = mode();
+        switch (m.tag) {
+            case 'dragging': {
+                const widget = widgets.find(w => w.id === m.id);
+                if (widget && widget.tag === 'rect') {
+                    setWidgets(w => w.id === m.id, { x: p.x - widget.w / 2, y: p.y - widget.h / 2 });
+                }
+                return;
+            }
+            case 'drawing':
+                setMode({ tag: 'drawing', start: m.start, current: p });
+                return;
+            case 'idle':
+            case 'armed': return;
+            default: return assertNever(m);
+        }
+    };
+
+    const pointerUp = () => {
+        const m = mode();
+        switch (m.tag) {
+            case 'drawing': {
+                const x = Math.min(m.start.x, m.current.x);
+                const y = Math.min(m.start.y, m.current.y);
+                const w = Math.abs(m.start.x - m.current.x);
+                const h = Math.abs(m.start.y - m.current.y);
+                if (w > 5 && h > 5) {
+                    setWidgets(ws => [...ws, { tag: 'rect', id: Date.now(), x, y, w, h }]);
+                }
+                setMode({ tag: 'armed', tool: 'rect' });
+                return;
+            }
+            case 'dragging':
+                setMode({ tag: 'idle' });
+                return;
+            case 'idle':
+            case 'armed': return;
+            default: return assertNever(m);
+        }
+    };
+
+    return {
+        widgets,
+        mode,
+        activeTool,
+        toggleTool,
+        cancel,
+        canvasPointerDown,
+        widgetPointerDown,
+        pointerMove,
+        pointerUp,
+    };
+}
+
+// --- DRAWABLES ---
 const getRectPath = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, { roughness: 1.2, stroke: strokeColor, strokeWidth: 2 }));
 
 const getButtonPath = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, { roughness: 1.5, stroke: strokeColor, strokeWidth: 2 }));
 
-const miniRect = createMemo(() =>
-    generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-);
-
-const miniButton = createMemo(() =>
-    generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 })
-);
-
-// --- 4. ACTIONS (The Logic) ---
-const getCursor = (e: MouseEvent | PointerEvent, svg: SVGSVGElement) => {
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    return pt.matrixTransform(svg.getScreenCTM()?.inverse());
-};
-
-const onPointerDown = (e: PointerEvent) => {
-    const tool = activeTool();
-    if (!canvasRef) return;
-    const cursor = getCursor(e, canvasRef);
-
-    if (tool === 'rect') {
-        setDrawingStart({ x: cursor.x, y: cursor.y });
-        setCurrentMouse({ x: cursor.x, y: cursor.y });
-    } else if (tool === 'button') {
-        setWidgets([...widgets, { id: Date.now(), type: 'button', x: cursor.x - 120, y: cursor.y - 40, w: 240, h: 80 }]);
-    }
-};
-
-const onPointerMove = (e: PointerEvent) => {
-    if (!canvasRef) return;
-    const cursor = getCursor(e, canvasRef);
-    
-    const dId = draggingId();
-    if (dId !== null) {
-        const widget = widgets.find(w => w.id === dId);
-        if (widget && widget.type === 'rect') {
-            setWidgets(w => w.id === dId, { x: cursor.x - widget.w / 2, y: cursor.y - widget.h / 2 });
-        }
-    }
-
-    if (drawingStart()) {
-        setCurrentMouse({ x: cursor.x, y: cursor.y });
-    }
-};
-
-const onPointerUp = () => {
-    const start = drawingStart();
-    const end = currentMouse();
-    
-    if (start && end && activeTool() === 'rect') {
-        const x = Math.min(start.x, end.x);
-        const y = Math.min(start.y, end.y);
-        const w = Math.abs(start.x - end.x);
-        const h = Math.abs(start.y - end.y);
-        
-        if (w > 5 && h > 5) {
-            setWidgets([...widgets, { id: Date.now(), type: 'rect', x, y, w, h }]);
-        }
-    }
-
-    setDrawingStart(null);
-    setCurrentMouse(null);
-    setDraggingId(null);
-};
-
-const toggleTool = (tool: string) => {
-    setActiveTool(current => current === tool ? null : tool);
-};
-
-// --- 5. VIEW (The App Component) ---
+// --- VIEW ---
 export default function App() {
+    const m = createModel();
+    let canvasRef: SVGSVGElement | undefined;
+
+    const miniRect = createMemo(() =>
+        generator.rectangle(10, 5, 60, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 }));
+    const miniButton = createMemo(() =>
+        generator.rectangle(5, 5, 70, 30, { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 }));
+
+    const toLocal = (e: PointerEvent): Point | null => {
+        if (!canvasRef) return null;
+        const ctm = canvasRef.getScreenCTM();
+        if (!ctm) return null;
+        const pt = canvasRef.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const r = pt.matrixTransform(ctm.inverse());
+        return { x: r.x, y: r.y };
+    };
+
     const handleKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') setActiveTool(null);
+        if (e.key === 'Escape') m.cancel();
     };
     window.addEventListener('keydown', handleKey);
     onCleanup(() => window.removeEventListener('keydown', handleKey));
 
+    const tileClass = (selected: boolean) =>
+        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
+            selected ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'
+        }`;
+
     return (
-        <main 
+        <main
             class="relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900"
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
+            onPointerMove={(e) => { const p = toLocal(e); if (p) m.pointerMove(p); }}
+            onPointerUp={() => m.pointerUp()}
         >
             <aside class="absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]">
                 <div class="flex flex-col gap-3">
-                    <div 
-                        onClick={() => toggleTool('rect')}
-                        class={`group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${activeTool() === 'rect' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'}`}
-                    >
+                    <div onClick={() => m.toggleTool('rect')} class={tileClass(m.activeTool() === 'rect')}>
                         <svg viewBox="0 0 80 40" class="w-full">
                             <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5" />
                             <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[10px] fill-gray-600 select-none font-bold">Rect</text>
                         </svg>
                     </div>
-
-                    <div 
-                        onClick={() => toggleTool('button')}
-                        class={`group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${activeTool() === 'button' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'}`}
-                    >
+                    <div onClick={() => m.toggleTool('button')} class={tileClass(m.activeTool() === 'button')}>
                         <svg viewBox="0 0 80 40" class="w-full">
                             <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5" />
                             <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[10px] fill-gray-600 select-none font-bold">Button</text>
@@ -134,10 +188,10 @@ export default function App() {
                 </div>
             </aside>
 
-            <svg 
+            <svg
                 ref={canvasRef}
-                class={`h-full w-full block bg-gray-100 ${activeTool() ? 'cursor-crosshair' : ''}`}
-                onPointerDown={onPointerDown}
+                class={`h-full w-full block bg-gray-100 ${m.activeTool() ? 'cursor-crosshair' : ''}`}
+                onPointerDown={(e) => { const p = toLocal(e); if (p) m.canvasPointerDown(p); }}
             >
                 <defs>
                     <pattern id="dotGrid" width="30" height="30" patternUnits="userSpaceOnUse">
@@ -146,42 +200,51 @@ export default function App() {
                 </defs>
                 <rect width="100%" height="100%" fill="url(#dotGrid)" />
 
-                <For each={widgets}>{(w) => (
-                    <g 
-                        transform={`translate(${w.x}, ${w.y})`} 
-                        class={w.type === 'rect' ? 'cursor-move' : ''}
-                        onPointerDown={(e) => {
-                            if (w.type === 'rect' && !activeTool()) {
-                                e.stopPropagation();
-                                setDraggingId(w.id);
-                            }
-                        }}
-                    >
-                        <path 
-                            d={w.type === 'rect' ? getRectPath(w.w, w.h) : getButtonPath(w.w, w.h)} 
-                            fill={w.type === 'rect' ? 'white' : 'none'} 
-                            fill-opacity={w.type === 'rect' ? 0.5 : 1}
-                            stroke={strokeColor} 
-                            stroke-width="2.5" 
-                        />
-                        {w.type === 'button' && (
-                            <text x={w.w / 2} y={w.h / 2 + 10} text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">Button</text>
-                        )}
-                    </g>
-                )}</For>
+                <For each={m.widgets}>{(w) => {
+                    switch (w.tag) {
+                        case 'rect':
+                            return (
+                                <g
+                                    transform={`translate(${w.x}, ${w.y})`}
+                                    class="cursor-move"
+                                    onPointerDown={(e) => {
+                                        if (m.mode().tag === 'idle') {
+                                            e.stopPropagation();
+                                            m.widgetPointerDown(w.id);
+                                        }
+                                    }}
+                                >
+                                    <path d={getRectPath(w.w, w.h)} fill="white" fill-opacity={0.5} stroke={strokeColor} stroke-width="2.5" />
+                                </g>
+                            );
+                        case 'button':
+                            return (
+                                <g transform={`translate(${w.x}, ${w.y})`}>
+                                    <path d={getButtonPath(w.w, w.h)} fill="none" stroke={strokeColor} stroke-width="2.5" />
+                                    <text x={w.w / 2} y={w.h / 2 + 10} text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">Button</text>
+                                </g>
+                            );
+                        default: return assertNever(w);
+                    }
+                }}</For>
 
-                {drawingStart() && currentMouse() && (
-                    <path 
-                        d={getRectPath(
-                            Math.abs(drawingStart()!.x - currentMouse()!.x),
-                            Math.abs(drawingStart()!.y - currentMouse()!.y)
-                        )}
-                        transform={`translate(${Math.min(drawingStart()!.x, currentMouse()!.x)}, ${Math.min(drawingStart()!.y, currentMouse()!.y)})`}
-                        fill="none"
-                        stroke={strokeColor}
-                        stroke-dasharray="5,5"
-                    />
-                )}
+                {(() => {
+                    const mm = m.mode();
+                    if (mm.tag !== 'drawing') return null;
+                    const x = Math.min(mm.start.x, mm.current.x);
+                    const y = Math.min(mm.start.y, mm.current.y);
+                    const w = Math.abs(mm.start.x - mm.current.x);
+                    const h = Math.abs(mm.start.y - mm.current.y);
+                    return (
+                        <path
+                            d={getRectPath(w, h)}
+                            transform={`translate(${x}, ${y})`}
+                            fill="none"
+                            stroke={strokeColor}
+                            stroke-dasharray="5,5"
+                        />
+                    );
+                })()}
             </svg>
         </main>
     );
