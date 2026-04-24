@@ -1,165 +1,14 @@
-import {createMemo, createSignal, For, onCleanup, type Accessor, type JSX} from "solid-js";
-import {createStore} from "solid-js/store";
+import {createMemo, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
+import {assertNever, createModel, type Mode, type Point, type Tool, type Widget} from "./model";
 
-// --- CONFIG ---
+// --- ROUGH PRIMITIVES ---
 const generator = rough.generator();
 const strokeColor = '#374151';
 
 const toPath = (drawable: Drawable) =>
     generator.toPaths(drawable).map(p => p.d).join(' ');
-
-function assertNever(_: never): never {
-    throw new Error('unreachable');
-}
-
-// --- TYPES ---
-type Point = { x: number; y: number };
-
-type Widget =
-    | { tag: 'rect'; id: number; x: number; y: number; w: number; h: number }
-    | { tag: 'button'; id: number; x: number; y: number; w: number; h: number }
-    | { tag: 'text'; id: number; x: number; y: number; content: string }
-    | { tag: 'annotation'; id: number; x: number; y: number; w: number; h: number; text: string };
-
-type Tool = 'rect' | 'button' | 'text' | 'annotation';
-type DrawKind = 'rect' | 'annotation';
-
-type Mode =
-    | { tag: 'idle' }
-    | { tag: 'armed'; tool: Tool }
-    | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
-    | { tag: 'dragging'; id: number; offset: Point };
-
-// --- MODEL ---
-function createModel() {
-    const [widgets, setWidgets] = createStore<Widget[]>([
-        {tag: 'rect', id: 1, x: 300, y: 100, w: 200, h: 150},
-        {tag: 'button', id: 2, x: 600, y: 300, w: 240, h: 80},
-    ]);
-    const [mode, setMode] = createSignal<Mode>({tag: 'idle'});
-
-    type Rect = { x: number; y: number; w: number; h: number };
-    const previewRect = createMemo<Rect | null>(() => {
-        const m = mode();
-        if (m.tag !== 'drawing') return null;
-        return {
-            x: Math.min(m.start.x, m.current.x),
-            y: Math.min(m.start.y, m.current.y),
-            w: Math.abs(m.start.x - m.current.x),
-            h: Math.abs(m.start.y - m.current.y),
-        };
-    });
-
-    const activeTool = (): Tool | null => {
-        const m = mode();
-        switch (m.tag) {
-            case 'armed':
-                return m.tool;
-            case 'drawing':
-                return m.kind;
-            case 'idle':
-            case 'dragging':
-                return null;
-            default:
-                return assertNever(m);
-        }
-    };
-
-    const toggleTool = (tool: Tool) => {
-        const m = mode();
-        if (m.tag === 'armed' && m.tool === tool) setMode({tag: 'idle'});
-        else setMode({tag: 'armed', tool});
-    };
-
-    const cancel = () => setMode({tag: 'idle'});
-
-    const canvasPointerDown = (p: Point) => {
-        const m = mode();
-        if (m.tag !== 'armed') return;
-        switch (m.tool) {
-            case 'rect':
-                setMode({tag: 'drawing', kind: 'rect', start: p, current: p});
-                return;
-            case 'annotation':
-                setMode({tag: 'drawing', kind: 'annotation', start: p, current: p});
-                return;
-            case 'button':
-                setWidgets(ws => [...ws, {tag: 'button', id: Date.now(), x: p.x - 120, y: p.y - 40, w: 240, h: 80}]);
-                return;
-            case 'text':
-                setWidgets(ws => [...ws, {tag: 'text', id: Date.now(), x: p.x, y: p.y, content: 'Text'}]);
-                return;
-            default:
-                return assertNever(m.tool);
-        }
-    };
-
-    const widgetPointerDown = (id: number, cursor: Point) => {
-        if (mode().tag !== 'idle') return;
-        const widget = widgets.find(w => w.id === id);
-        if (!widget) return;
-        setMode({tag: 'dragging', id, offset: {x: cursor.x - widget.x, y: cursor.y - widget.y}});
-    };
-
-    const pointerMove = (p: Point) => {
-        const m = mode();
-        switch (m.tag) {
-            case 'dragging':
-                setWidgets(w => w.id === m.id, {x: p.x - m.offset.x, y: p.y - m.offset.y});
-                return;
-            case 'drawing':
-                setMode({tag: 'drawing', kind: m.kind, start: m.start, current: p});
-                return;
-            case 'idle':
-            case 'armed':
-                return;
-            default:
-                return assertNever(m);
-        }
-    };
-
-    const pointerUp = () => {
-        const m = mode();
-        switch (m.tag) {
-            case 'drawing': {
-                const r = previewRect();
-                if (r && r.w > 5 && r.h > 5) {
-                    const id = Date.now();
-                    if (m.kind === 'rect') {
-                        setWidgets(ws => [...ws, {tag: 'rect', id, ...r}]);
-                    } else {
-                        setWidgets(ws => [...ws, {tag: 'annotation', id, ...r, text: 'Note. Type more to see wrap.'}]);
-                    }
-                }
-                setMode({tag: 'armed', tool: m.kind});
-                return;
-            }
-            case 'dragging':
-                setMode({tag: 'idle'});
-                return;
-            case 'idle':
-            case 'armed':
-                return;
-            default:
-                return assertNever(m);
-        }
-    };
-
-    return {
-        widgets,
-        mode,
-        previewRect,
-        activeTool,
-        toggleTool,
-        cancel,
-        canvasPointerDown,
-        widgetPointerDown,
-        pointerMove,
-        pointerUp,
-    };
-}
 
 const roughRect = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, {roughness: 1.2, stroke: strokeColor, strokeWidth: 2}));
@@ -168,6 +17,7 @@ const roughRect = (w: number, h: number) =>
 type RectW = Extract<Widget, { tag: 'rect' }>;
 type ButtonW = Extract<Widget, { tag: 'button' }>;
 type TextW = Extract<Widget, { tag: 'text' }>;
+type AnnotationW = Extract<Widget, { tag: 'annotation' }>;
 
 type WidgetProps<T> = {
     w: T;
@@ -204,23 +54,17 @@ function ButtonWidget(props: WidgetProps<ButtonW>) {
     );
 }
 
-function ToolTile(props: { label: string; active: boolean; onToggle: () => void; preview: JSX.Element }) {
-    const tileClass = () =>
-        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
-            props.active ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'
-        }`;
+function TextWidget(props: WidgetProps<TextW>) {
     return (
-        <div onClick={props.onToggle} class={tileClass()}>
-            <svg viewBox="0 0 80 40" class="w-full">
-                {props.preview}
-                <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
-                      class="text-[10px] fill-gray-600 select-none font-bold">{props.label}</text>
-            </svg>
-        </div>
+        <g transform={`translate(${props.w.x}, ${props.w.y})`}
+           class={cursorClass(props.mode)}
+           onPointerDown={(e) => props.onDragStart(props.w.id, e)}>
+            <rect x={-4} y={-24} width={props.w.content.length * 14 + 8} height={32} fill="transparent"/>
+            <text style={{"font-family": "'Kalam', cursive"}}
+                  class="select-none text-2xl fill-gray-800 font-bold" pointer-events="none">{props.w.content}</text>
+        </g>
     );
 }
-
-type AnnotationW = Extract<Widget, { tag: 'annotation' }>;
 
 function AnnotationWidget(props: WidgetProps<AnnotationW>) {
     const d = createMemo(() => roughRect(props.w.w, props.w.h));
@@ -247,15 +91,19 @@ function AnnotationWidget(props: WidgetProps<AnnotationW>) {
     );
 }
 
-function TextWidget(props: WidgetProps<TextW>) {
+function ToolTile(props: { label: string; active: boolean; onToggle: () => void; preview: JSX.Element }) {
+    const tileClass = () =>
+        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
+            props.active ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'
+        }`;
     return (
-        <g transform={`translate(${props.w.x}, ${props.w.y})`}
-           class={cursorClass(props.mode)}
-           onPointerDown={(e) => props.onDragStart(props.w.id, e)}>
-            <rect x={-4} y={-24} width={props.w.content.length * 14 + 8} height={32} fill="transparent"/>
-            <text style={{"font-family": "'Kalam', cursive"}}
-                  class="select-none text-2xl fill-gray-800 font-bold" pointer-events="none">{props.w.content}</text>
-        </g>
+        <div onClick={props.onToggle} class={tileClass()}>
+            <svg viewBox="0 0 80 40" class="w-full">
+                {props.preview}
+                <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
+                      class="text-[10px] fill-gray-600 select-none font-bold">{props.label}</text>
+            </svg>
+        </div>
     );
 }
 
