@@ -1,7 +1,7 @@
 import {createMemo, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
-import {assertNever, createModel, type Mode, type Point, type Tool, type Widget} from "./model";
+import {assertNever, createModel, type Mode, type Point, type Tool, type Widget, type WidgetId} from "./model";
 
 // --- ROUGH PRIMITIVES ---
 const generator = rough.generator();
@@ -22,7 +22,7 @@ type AnnotationW = Extract<Widget, { tag: 'annotation' }>;
 type WidgetProps<T> = {
     w: T;
     mode: Accessor<Mode>;
-    onDragStart: (id: number, e: PointerEvent) => void;
+    onDragStart: (id: WidgetId, e: PointerEvent) => void;
 };
 
 const cursorClass = (mode: Accessor<Mode>) => mode().tag === 'idle' ? 'cursor-move' : '';
@@ -134,6 +134,14 @@ export default function App() {
     window.addEventListener('keydown', handleKey);
     onCleanup(() => window.removeEventListener('keydown', handleKey));
 
+    const onDragStart = (id: WidgetId, e: PointerEvent) => {
+        if (m.mode().tag !== 'idle') return;
+        const p = toLocal(e);
+        if (!p) return;
+        e.stopPropagation();
+        m.widgetPointerDown(id, p);
+    };
+
     const tools: { tool: Tool; label: string; preview: () => JSX.Element }[] = [
         { tool: 'rect', label: 'Rect', preview: () => <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
         { tool: 'button', label: 'Button', preview: () => <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
@@ -143,7 +151,7 @@ export default function App() {
 
     return (
         <main
-            class="relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900"
+            class="relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none"
             onPointerMove={(e) => {
                 const p = toLocal(e);
                 if (p) m.pointerMove(p);
@@ -180,13 +188,6 @@ export default function App() {
                 <rect width="100%" height="100%" fill="url(#dotGrid)"/>
 
                 <For each={m.widgets}>{(w) => {
-                    const onDragStart = (id: number, e: PointerEvent) => {
-                        if (m.mode().tag !== 'idle') return;
-                        const p = toLocal(e);
-                        if (!p) return;
-                        e.stopPropagation();
-                        m.widgetPointerDown(id, p);
-                    };
                     switch (w.tag) {
                         case 'rect': return <RectWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
                         case 'button': return <ButtonWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
