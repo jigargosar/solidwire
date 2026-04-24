@@ -1,4 +1,4 @@
-import {createMemo, createSignal, For, onCleanup, type Accessor} from "solid-js";
+import {createMemo, createSignal, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import {createStore} from "solid-js/store";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
@@ -194,6 +194,22 @@ function ButtonWidget(props: WidgetProps<ButtonW>) {
     );
 }
 
+function ToolTile(props: { label: string; active: boolean; onToggle: () => void; preview: JSX.Element }) {
+    const tileClass = () =>
+        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
+            props.active ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'
+        }`;
+    return (
+        <div onClick={props.onToggle} class={tileClass()}>
+            <svg viewBox="0 0 80 40" class="w-full">
+                {props.preview}
+                <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
+                      class="text-[10px] fill-gray-600 select-none font-bold">{props.label}</text>
+            </svg>
+        </div>
+    );
+}
+
 function TextWidget(props: WidgetProps<TextW>) {
     return (
         <g transform={`translate(${props.w.x}, ${props.w.y})`}
@@ -233,10 +249,11 @@ export default function App() {
     window.addEventListener('keydown', handleKey);
     onCleanup(() => window.removeEventListener('keydown', handleKey));
 
-    const tileClass = (selected: boolean) =>
-        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
-            selected ? 'border-blue-600 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-blue-500'
-        }`;
+    const tools: { tool: Tool; label: string; preview: () => JSX.Element }[] = [
+        { tool: 'rect', label: 'Rect', preview: () => <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
+        { tool: 'button', label: 'Button', preview: () => <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
+        { tool: 'text', label: 'Text', preview: () => null },
+    ];
 
     return (
         <main
@@ -250,29 +267,14 @@ export default function App() {
             <aside
                 class="absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]">
                 <div class="flex flex-col gap-3">
-                    <div onClick={() => m.toggleTool('rect')} class={tileClass(m.activeTool() === 'rect')}>
-                        <svg viewBox="0 0 80 40" class="w-full">
-                            <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5"/>
-                            <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
-                                  class="text-[10px] fill-gray-600 select-none font-bold">Rect
-                            </text>
-                        </svg>
-                    </div>
-                    <div onClick={() => m.toggleTool('button')} class={tileClass(m.activeTool() === 'button')}>
-                        <svg viewBox="0 0 80 40" class="w-full">
-                            <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5"/>
-                            <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
-                                  class="text-[10px] fill-gray-600 select-none font-bold">Button
-                            </text>
-                        </svg>
-                    </div>
-                    <div onClick={() => m.toggleTool('text')} class={tileClass(m.activeTool() === 'text')}>
-                        <svg viewBox="0 0 80 40" class="w-full">
-                            <text x="40" y="26" text-anchor="middle" style={{"font-family": "'Kalam', cursive"}}
-                                  class="text-[14px] fill-gray-700 select-none font-bold">Text
-                            </text>
-                        </svg>
-                    </div>
+                    <For each={tools}>{(t) => (
+                        <ToolTile
+                            label={t.label}
+                            active={m.activeTool() === t.tool}
+                            onToggle={() => m.toggleTool(t.tool)}
+                            preview={t.preview()}
+                        />
+                    )}</For>
                 </div>
             </aside>
 
