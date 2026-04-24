@@ -25,6 +25,21 @@ export type Mode =
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point };
 
+export type Bounds = { x: number; y: number; w: number; h: number };
+
+export function widgetBounds(w: Widget): Bounds {
+    switch (w.tag) {
+        case 'rect':
+        case 'button':
+        case 'annotation':
+            return {x: w.x, y: w.y, w: w.w, h: w.h};
+        case 'text':
+            return {x: w.x - 4, y: w.y - 24, w: w.content.length * 14 + 8, h: 32};
+        default:
+            return assertNever(w);
+    }
+}
+
 // --- MODEL ---
 export function createModel() {
     const newId = (): WidgetId => crypto.randomUUID();
@@ -34,6 +49,7 @@ export function createModel() {
         {tag: 'button', id: newId(), x: 600, y: 300, w: 240, h: 80},
     ]);
     const [mode, setMode] = createSignal<Mode>({tag: 'idle'});
+    const [selectedId, setSelectedId] = createSignal<WidgetId | null>(null);
 
     type Rect = { x: number; y: number; w: number; h: number };
     const previewRect = createMemo<Rect | null>(() => {
@@ -68,11 +84,17 @@ export function createModel() {
         else setMode({tag: 'armed', tool});
     };
 
-    const cancel = () => setMode({tag: 'idle'});
+    const cancel = () => {
+        setMode({tag: 'idle'});
+        setSelectedId(null);
+    };
 
     const canvasPointerDown = (p: Point) => {
         const m = mode();
-        if (m.tag !== 'armed') return;
+        if (m.tag !== 'armed') {
+            if (m.tag === 'idle') setSelectedId(null);
+            return;
+        }
         switch (m.tool) {
             case 'rect':
                 setMode({tag: 'drawing', kind: 'rect', start: p, current: p});
@@ -95,6 +117,7 @@ export function createModel() {
         if (mode().tag !== 'idle') return;
         const widget = widgets.find(w => w.id === id);
         if (!widget) return;
+        setSelectedId(id);
         setMode({tag: 'dragging', id, offset: {x: cursor.x - widget.x, y: cursor.y - widget.y}});
     };
 
@@ -150,6 +173,7 @@ export function createModel() {
     return {
         widgets,
         mode,
+        selectedId,
         previewRect,
         activeTool,
         toggleTool,

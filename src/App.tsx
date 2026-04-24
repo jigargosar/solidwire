@@ -1,7 +1,8 @@
 import {createMemo, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
-import {assertNever, createModel, type Mode, type Point, type Tool, type Widget, type WidgetId} from "./model";
+import {assertNever, createModel, widgetBounds, type Mode, type Point, type Tool, type Widget, type WidgetId} from "./model";
+import {Show} from "solid-js";
 
 // --- ROUGH PRIMITIVES ---
 const generator = rough.generator();
@@ -197,19 +198,34 @@ export default function App() {
                     }
                 }}</For>
 
-                {(() => {
-                    const r = m.previewRect();
-                    if (!r) return null;
-                    return (
-                        <path
-                            d={roughRect(r.w, r.h)}
-                            transform={`translate(${r.x}, ${r.y})`}
-                            fill="none"
-                            stroke={strokeColor}
-                            stroke-dasharray="5,5"
-                        />
-                    );
-                })()}
+                <Show when={m.previewRect()}>{(r) => (
+                    <path
+                        d={roughRect(r().w, r().h)}
+                        transform={`translate(${r().x}, ${r().y})`}
+                        fill="none"
+                        stroke={strokeColor}
+                        stroke-dasharray="5,5"
+                    />
+                )}</Show>
+
+                <Show when={(() => {
+                    const id = m.selectedId();
+                    if (!id) return null;
+                    const w = m.widgets.find(w => w.id === id);
+                    return w ? widgetBounds(w) : null;
+                })()}>{(b) => (
+                    <rect
+                        x={b().x - 4}
+                        y={b().y - 4}
+                        width={b().w + 8}
+                        height={b().h + 8}
+                        fill="none"
+                        stroke="#2563eb"
+                        stroke-width="1.5"
+                        stroke-dasharray="4,3"
+                        pointer-events="none"
+                    />
+                )}</Show>
             </svg>
         </main>
     );
