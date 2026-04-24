@@ -208,12 +208,9 @@ export default function App() {
                     />
                 )}</Show>
 
-                <Show when={(() => {
-                    const id = m.selectedId();
-                    if (!id) return null;
-                    const w = m.widgets.find(w => w.id === id);
-                    return w ? widgetBounds(w) : null;
-                })()}>{(b) => (
+                <Show when={m.selectedWidget()}>{(w) => {
+                    const b = () => widgetBounds(w());
+                    return (
                     <rect
                         x={b().x - 4}
                         y={b().y - 4}
@@ -225,7 +222,8 @@ export default function App() {
                         stroke-dasharray="4,3"
                         pointer-events="none"
                     />
-                )}</Show>
+                    );
+                }}</Show>
             </svg>
         </main>
     );

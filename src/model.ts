@@ -50,6 +50,11 @@ export function createModel() {
     ]);
     const [mode, setMode] = createSignal<Mode>({tag: 'idle'});
     const [selectedId, setSelectedId] = createSignal<WidgetId | null>(null);
+    const selectedWidget = createMemo<Widget | null>(() => {
+        const id = selectedId();
+        if (!id) return null;
+        return widgets.find(w => w.id === id) ?? null;
+    });
 
     type Rect = { x: number; y: number; w: number; h: number };
     const previewRect = createMemo<Rect | null>(() => {
@@ -173,7 +178,7 @@ export function createModel() {
     return {
         widgets,
         mode,
-        selectedId,
+        selectedWidget,
         previewRect,
         activeTool,
         toggleTool,
