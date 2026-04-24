@@ -20,14 +20,16 @@ type Point = { x: number; y: number };
 type Widget =
     | { tag: 'rect'; id: number; x: number; y: number; w: number; h: number }
     | { tag: 'button'; id: number; x: number; y: number; w: number; h: number }
-    | { tag: 'text'; id: number; x: number; y: number; content: string };
+    | { tag: 'text'; id: number; x: number; y: number; content: string }
+    | { tag: 'annotation'; id: number; x: number; y: number; w: number; h: number; text: string };
 
-type Tool = 'rect' | 'button' | 'text';
+type Tool = 'rect' | 'button' | 'text' | 'annotation';
+type DrawKind = 'rect' | 'annotation';
 
 type Mode =
     | { tag: 'idle' }
     | { tag: 'armed'; tool: Tool }
-    | { tag: 'drawing'; start: Point; current: Point }
+    | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: number; offset: Point };
 
 // --- MODEL ---
@@ -56,7 +58,7 @@ function createModel() {
             case 'armed':
                 return m.tool;
             case 'drawing':
-                return 'rect';
+                return m.kind;
             case 'idle':
             case 'dragging':
                 return null;
@@ -78,7 +80,10 @@ function createModel() {
         if (m.tag !== 'armed') return;
         switch (m.tool) {
             case 'rect':
-                setMode({tag: 'drawing', start: p, current: p});
+                setMode({tag: 'drawing', kind: 'rect', start: p, current: p});
+                return;
+            case 'annotation':
+                setMode({tag: 'drawing', kind: 'annotation', start: p, current: p});
                 return;
             case 'button':
                 setWidgets(ws => [...ws, {tag: 'button', id: Date.now(), x: p.x - 120, y: p.y - 40, w: 240, h: 80}]);
@@ -105,7 +110,7 @@ function createModel() {
                 setWidgets(w => w.id === m.id, {x: p.x - m.offset.x, y: p.y - m.offset.y});
                 return;
             case 'drawing':
-                setMode({tag: 'drawing', start: m.start, current: p});
+                setMode({tag: 'drawing', kind: m.kind, start: m.start, current: p});
                 return;
             case 'idle':
             case 'armed':
@@ -121,9 +126,14 @@ function createModel() {
             case 'drawing': {
                 const r = previewRect();
                 if (r && r.w > 5 && r.h > 5) {
-                    setWidgets(ws => [...ws, {tag: 'rect', id: Date.now(), ...r}]);
+                    const id = Date.now();
+                    if (m.kind === 'rect') {
+                        setWidgets(ws => [...ws, {tag: 'rect', id, ...r}]);
+                    } else {
+                        setWidgets(ws => [...ws, {tag: 'annotation', id, ...r, text: 'Note. Type more to see wrap.'}]);
+                    }
                 }
-                setMode({tag: 'armed', tool: 'rect'});
+                setMode({tag: 'armed', tool: m.kind});
                 return;
             }
             case 'dragging':
@@ -210,6 +220,33 @@ function ToolTile(props: { label: string; active: boolean; onToggle: () => void;
     );
 }
 
+type AnnotationW = Extract<Widget, { tag: 'annotation' }>;
+
+function AnnotationWidget(props: WidgetProps<AnnotationW>) {
+    const d = createMemo(() => roughRect(props.w.w, props.w.h));
+    return (
+        <g transform={`translate(${props.w.x}, ${props.w.y})`}
+           class={cursorClass(props.mode)}
+           onPointerDown={(e) => props.onDragStart(props.w.id, e)}>
+            <rect width={props.w.w} height={props.w.h} fill="transparent"/>
+            <path d={d()} fill="none" stroke={strokeColor} stroke-width="1.5" stroke-dasharray="3,3" pointer-events="none"/>
+            <foreignObject x={0} y={0} width={props.w.w} height={props.w.h} pointer-events="none">
+                <div style={{
+                    "width": "100%",
+                    "height": "100%",
+                    "padding": "6px 8px",
+                    "font-family": "'Kalam', cursive",
+                    "font-size": "14px",
+                    "color": "#374151",
+                    "overflow": "hidden",
+                    "word-wrap": "break-word",
+                    "box-sizing": "border-box",
+                }}>{props.w.text}</div>
+            </foreignObject>
+        </g>
+    );
+}
+
 function TextWidget(props: WidgetProps<TextW>) {
     return (
         <g transform={`translate(${props.w.x}, ${props.w.y})`}
@@ -253,6 +290,7 @@ export default function App() {
         { tool: 'rect', label: 'Rect', preview: () => <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
         { tool: 'button', label: 'Button', preview: () => <path d={toPath(miniButton())} fill="none" stroke={strokeColor} stroke-width="1.5"/> },
         { tool: 'text', label: 'Text', preview: () => null },
+        { tool: 'annotation', label: 'Note', preview: () => <path d={toPath(miniRect())} fill="none" stroke={strokeColor} stroke-width="1" stroke-dasharray="3,3"/> },
     ];
 
     return (
@@ -305,6 +343,7 @@ export default function App() {
                         case 'rect': return <RectWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
                         case 'button': return <ButtonWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
                         case 'text': return <TextWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
+                        case 'annotation': return <AnnotationWidget w={w} mode={m.mode} onDragStart={onDragStart}/>;
                         default: return assertNever(w);
                     }
                 }}</For>
