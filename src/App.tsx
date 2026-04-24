@@ -19,9 +19,10 @@ type Point = { x: number; y: number };
 
 type Widget =
     | { tag: 'rect'; id: number; x: number; y: number; w: number; h: number }
-    | { tag: 'button'; id: number; x: number; y: number; w: number; h: number };
+    | { tag: 'button'; id: number; x: number; y: number; w: number; h: number }
+    | { tag: 'text'; id: number; x: number; y: number; content: string };
 
-type Tool = 'rect' | 'button';
+type Tool = 'rect' | 'button' | 'text';
 
 type Mode =
     | { tag: 'idle' }
@@ -78,6 +79,9 @@ function createModel() {
             case 'button':
                 setWidgets(ws => [...ws, { tag: 'button', id: Date.now(), x: p.x - 120, y: p.y - 40, w: 240, h: 80 }]);
                 return;
+            case 'text':
+                setWidgets(ws => [...ws, { tag: 'text', id: Date.now(), x: p.x, y: p.y, content: 'Text' }]);
+                return;
             default: return assertNever(m.tool);
         }
     };
@@ -91,10 +95,18 @@ function createModel() {
         switch (m.tag) {
             case 'dragging': {
                 const widget = widgets.find(w => w.id === m.id);
-                if (widget && widget.tag === 'rect') {
-                    setWidgets(w => w.id === m.id, { x: p.x - widget.w / 2, y: p.y - widget.h / 2 });
+                if (!widget) return;
+                switch (widget.tag) {
+                    case 'rect':
+                        setWidgets(w => w.id === m.id, { x: p.x - widget.w / 2, y: p.y - widget.h / 2 });
+                        return;
+                    case 'text':
+                        setWidgets(w => w.id === m.id, { x: p.x, y: p.y });
+                        return;
+                    case 'button':
+                        return;
+                    default: return assertNever(widget);
                 }
-                return;
             }
             case 'drawing':
                 setMode({ tag: 'drawing', start: m.start, current: p });
@@ -198,6 +210,11 @@ export default function App() {
                             <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[10px] fill-gray-600 select-none font-bold">Button</text>
                         </svg>
                     </div>
+                    <div onClick={() => m.toggleTool('text')} class={tileClass(m.activeTool() === 'text')}>
+                        <svg viewBox="0 0 80 40" class="w-full">
+                            <text x="40" y="26" text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="text-[14px] fill-gray-700 select-none font-bold">Text</text>
+                        </svg>
+                    </div>
                 </div>
             </aside>
 
@@ -235,6 +252,21 @@ export default function App() {
                                 <g transform={`translate(${w.x}, ${w.y})`}>
                                     <path d={getButtonPath(w.w, w.h)} fill="none" stroke={strokeColor} stroke-width="2.5" />
                                     <text x={w.w / 2} y={w.h / 2 + 10} text-anchor="middle" style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">Button</text>
+                                </g>
+                            );
+                        case 'text':
+                            return (
+                                <g
+                                    transform={`translate(${w.x}, ${w.y})`}
+                                    class="cursor-move"
+                                    onPointerDown={(e) => {
+                                        if (m.mode().tag === 'idle') {
+                                            e.stopPropagation();
+                                            m.widgetPointerDown(w.id);
+                                        }
+                                    }}
+                                >
+                                    <text style={{ "font-family": "'Kalam', cursive" }} class="select-none text-2xl fill-gray-800 font-bold">{w.content}</text>
                                 </g>
                             );
                         default: return assertNever(w);
