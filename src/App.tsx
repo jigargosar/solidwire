@@ -10,7 +10,7 @@ import {
     type Widget,
     type WidgetId,
 } from './model'
-import type { Point } from './geom'
+import type { Bounds, Point } from './geom'
 import { Show } from 'solid-js'
 
 type ModelApi = ReturnType<typeof createModel>
@@ -18,28 +18,20 @@ type ModelApi = ReturnType<typeof createModel>
 // === ROUGH PRIMITIVES ===
 const generator = rough.generator()
 const strokeColor = '#374151'
+const fontFamily = "'Kalam', cursive"
 
-const toPath = (drawable: Drawable) =>
+const toPath = (d: Drawable) =>
     generator
-        .toPaths(drawable)
+        .toPaths(d)
         .map((p) => p.d)
         .join(' ')
 
 const roughRect = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, { roughness: 1.2, stroke: strokeColor, strokeWidth: 2 }))
 
-const miniRectDrawable = generator.rectangle(10, 5, 60, 30, {
-    roughness: 1.0,
-    stroke: strokeColor,
-    strokeWidth: 1.5,
-})
-const miniButtonDrawable = generator.rectangle(5, 5, 70, 30, {
-    roughness: 1.0,
-    stroke: strokeColor,
-    strokeWidth: 1.5,
-})
+const labelClass = 'select-none text-2xl fill-gray-800 font-bold'
 
-// === SHARED WIDGET FRAME ===
+// === WIDGET TYPES ===
 type RectW = Extract<Widget, { tag: 'rect' }>
 type ButtonW = Extract<Widget, { tag: 'button' }>
 type TextW = Extract<Widget, { tag: 'text' }>
@@ -54,24 +46,45 @@ type WidgetProps<T> = {
 
 const cursorClass = (mode: Accessor<Mode>) => (mode().tag === 'idle' ? 'cursor-move' : '')
 
-function RoughBox(props: {
-    w: BoxW
+// === FRAME ===
+function DraggableGroup(props: {
+    id: WidgetId
+    x: number
+    y: number
     mode: Accessor<Mode>
     onDragStart: (id: WidgetId, e: PointerEvent) => void
-    pathProps: JSX.PathSVGAttributes<SVGPathElement>
-    children?: JSX.Element
+    children: JSX.Element
 }) {
-    const d = createMemo(() => roughRect(props.w.w, props.w.h))
     return (
         <g
-            transform={`translate(${props.w.x}, ${props.w.y})`}
+            transform={`translate(${props.x}, ${props.y})`}
             class={cursorClass(props.mode)}
-            onPointerDown={(e) => props.onDragStart(props.w.id, e)}
+            onPointerDown={(e) => props.onDragStart(props.id, e)}
+        >
+            {props.children}
+        </g>
+    )
+}
+
+function RoughBox(
+    props: WidgetProps<BoxW> & {
+        pathProps: JSX.PathSVGAttributes<SVGPathElement>
+        children?: JSX.Element
+    },
+) {
+    const d = createMemo(() => roughRect(props.w.w, props.w.h))
+    return (
+        <DraggableGroup
+            id={props.w.id}
+            x={props.w.x}
+            y={props.w.y}
+            mode={props.mode}
+            onDragStart={props.onDragStart}
         >
             <rect width={props.w.w} height={props.w.h} fill='transparent' />
             <path d={d()} pointer-events='none' {...props.pathProps} />
             {props.children}
-        </g>
+        </DraggableGroup>
     )
 }
 
@@ -79,9 +92,7 @@ function RoughBox(props: {
 function RectWidget(props: WidgetProps<RectW>) {
     return (
         <RoughBox
-            w={props.w}
-            mode={props.mode}
-            onDragStart={props.onDragStart}
+            {...props}
             pathProps={{
                 fill: 'white',
                 'fill-opacity': 0.5,
@@ -95,17 +106,15 @@ function RectWidget(props: WidgetProps<RectW>) {
 function ButtonWidget(props: WidgetProps<ButtonW>) {
     return (
         <RoughBox
-            w={props.w}
-            mode={props.mode}
-            onDragStart={props.onDragStart}
+            {...props}
             pathProps={{ fill: 'none', stroke: strokeColor, 'stroke-width': '2.5' }}
         >
             <text
                 x={props.w.w / 2}
                 y={props.w.h / 2 + 10}
                 text-anchor='middle'
-                style={{ 'font-family': "'Kalam', cursive" }}
-                class='select-none text-2xl fill-gray-800 font-bold'
+                style={{ 'font-family': fontFamily }}
+                class={labelClass}
                 pointer-events='none'
             >
                 Button
@@ -117,9 +126,7 @@ function ButtonWidget(props: WidgetProps<ButtonW>) {
 function AnnotationWidget(props: WidgetProps<AnnotationW>) {
     return (
         <RoughBox
-            w={props.w}
-            mode={props.mode}
-            onDragStart={props.onDragStart}
+            {...props}
             pathProps={{
                 fill: 'none',
                 stroke: strokeColor,
@@ -133,9 +140,9 @@ function AnnotationWidget(props: WidgetProps<AnnotationW>) {
                         width: '100%',
                         height: '100%',
                         padding: '6px 8px',
-                        'font-family': "'Kalam', cursive",
+                        'font-family': fontFamily,
                         'font-size': '14px',
-                        color: '#374151',
+                        color: strokeColor,
                         overflow: 'hidden',
                         'word-wrap': 'break-word',
                         'box-sizing': 'border-box',
@@ -151,10 +158,12 @@ function AnnotationWidget(props: WidgetProps<AnnotationW>) {
 function TextWidget(props: WidgetProps<TextW>) {
     const b = createMemo(() => widgetBounds(props.w))
     return (
-        <g
-            transform={`translate(${props.w.x}, ${props.w.y})`}
-            class={cursorClass(props.mode)}
-            onPointerDown={(e) => props.onDragStart(props.w.id, e)}
+        <DraggableGroup
+            id={props.w.id}
+            x={props.w.x}
+            y={props.w.y}
+            mode={props.mode}
+            onDragStart={props.onDragStart}
         >
             <rect
                 x={b().x - props.w.x}
@@ -164,57 +173,64 @@ function TextWidget(props: WidgetProps<TextW>) {
                 fill='transparent'
             />
             <text
-                style={{ 'font-family': "'Kalam', cursive" }}
-                class='select-none text-2xl fill-gray-800 font-bold'
+                style={{ 'font-family': fontFamily }}
+                class={labelClass}
                 pointer-events='none'
             >
                 {props.w.content}
             </text>
-        </g>
+        </DraggableGroup>
     )
 }
 
 // === TOOLBAR ===
+const miniRectDrawable = generator.rectangle(10, 5, 60, 30, {
+    roughness: 1.0,
+    stroke: strokeColor,
+    strokeWidth: 1.5,
+})
+const miniButtonDrawable = generator.rectangle(5, 5, 70, 30, {
+    roughness: 1.0,
+    stroke: strokeColor,
+    strokeWidth: 1.5,
+})
+
+function MiniPath(props: { drawable: Drawable; dashed?: boolean }) {
+    return (
+        <path
+            d={toPath(props.drawable)}
+            fill='none'
+            stroke={strokeColor}
+            stroke-width={props.dashed ? '1' : '1.5'}
+            stroke-dasharray={props.dashed ? '3,3' : undefined}
+        />
+    )
+}
+
 type ToolEntry = { tool: Tool; label: string; preview: () => JSX.Element }
 
 const tools: ToolEntry[] = [
+    { tool: 'rect', label: 'Rect', preview: () => <MiniPath drawable={miniRectDrawable} /> },
+    { tool: 'button', label: 'Button', preview: () => <MiniPath drawable={miniButtonDrawable} /> },
     {
-        tool: 'rect',
-        label: 'Rect',
+        tool: 'text',
+        label: 'Text',
         preview: () => (
-            <path
-                d={toPath(miniRectDrawable)}
-                fill='none'
-                stroke={strokeColor}
-                stroke-width='1.5'
-            />
+            <text
+                x='40'
+                y='17'
+                text-anchor='middle'
+                style={{ 'font-family': fontFamily }}
+                class='select-none text-base fill-gray-700 font-bold'
+            >
+                Aa
+            </text>
         ),
     },
-    {
-        tool: 'button',
-        label: 'Button',
-        preview: () => (
-            <path
-                d={toPath(miniButtonDrawable)}
-                fill='none'
-                stroke={strokeColor}
-                stroke-width='1.5'
-            />
-        ),
-    },
-    { tool: 'text', label: 'Text', preview: () => null },
     {
         tool: 'annotation',
         label: 'Note',
-        preview: () => (
-            <path
-                d={toPath(miniRectDrawable)}
-                fill='none'
-                stroke={strokeColor}
-                stroke-width='1'
-                stroke-dasharray='3,3'
-            />
-        ),
+        preview: () => <MiniPath drawable={miniRectDrawable} dashed />,
     },
 ]
 
@@ -238,7 +254,7 @@ function ToolTile(props: {
                     x='40'
                     y='26'
                     text-anchor='middle'
-                    style={{ 'font-family': "'Kalam', cursive" }}
+                    style={{ 'font-family': fontFamily }}
                     class='text-[10px] fill-gray-600 select-none font-bold'
                 >
                     {props.label}
@@ -268,121 +284,150 @@ function Toolbar(props: { model: ModelApi }) {
 }
 
 // === CANVAS ===
-function Canvas(props: {
-    model: ModelApi
-    setRef: (el: SVGSVGElement) => void
-    toLocal: (e: PointerEvent) => Point | null
-}) {
-    const m = props.model
-
-    const onDragStart = (id: WidgetId, e: PointerEvent) => {
-        if (m.mode().tag !== 'idle') return
-        const p = props.toLocal(e)
-        if (!p) return
-        e.stopPropagation()
-        m.widgetPointerDown(id, p)
-    }
-
+function GridBackground() {
     return (
-        <svg
-            ref={props.setRef}
-            class={`h-full w-full block bg-gray-100 ${m.activeTool() ? 'cursor-crosshair' : ''}`}
-            onPointerDown={(e) => {
-                const p = props.toLocal(e)
-                if (p) m.canvasPointerDown(p)
-            }}
-        >
+        <>
             <defs>
                 <pattern id='dotGrid' width='30' height='30' patternUnits='userSpaceOnUse'>
                     <circle cx='2' cy='2' r='0.8' class='fill-blue-400' />
                 </pattern>
             </defs>
             <rect width='100%' height='100%' fill='url(#dotGrid)' />
+        </>
+    )
+}
 
-            <For each={m.widgets}>
+function DrawPreview(props: { rect: Accessor<Bounds | null> }) {
+    return (
+        <Show when={props.rect()}>
+            {(r) => (
+                <path
+                    d={roughRect(r().w, r().h)}
+                    transform={`translate(${r().x}, ${r().y})`}
+                    fill='none'
+                    stroke={strokeColor}
+                    stroke-dasharray='5,5'
+                />
+            )}
+        </Show>
+    )
+}
+
+function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
+    return (
+        <Show when={props.bounds()}>
+            {(b) => (
+                <rect
+                    x={b().x - 4}
+                    y={b().y - 4}
+                    width={b().w + 8}
+                    height={b().h + 8}
+                    fill='none'
+                    stroke='#2563eb'
+                    stroke-width='1.5'
+                    stroke-dasharray='4,3'
+                    pointer-events='none'
+                />
+            )}
+        </Show>
+    )
+}
+
+function Canvas(props: {
+    model: ModelApi
+    setRef: (el: SVGSVGElement) => void
+    toLocal: (e: PointerEvent) => Point | null
+}) {
+    const model = props.model
+
+    const onDragStart = (id: WidgetId, e: PointerEvent) => {
+        if (model.mode().tag !== 'idle') return
+        const p = props.toLocal(e)
+        if (!p) return
+        e.stopPropagation()
+        model.widgetPointerDown(id, p)
+    }
+
+    const wp = { mode: model.mode, onDragStart }
+
+    return (
+        <svg
+            ref={props.setRef}
+            class={`h-full w-full block bg-gray-100 ${model.activeTool() ? 'cursor-crosshair' : ''}`}
+            onPointerDown={(e) => {
+                const p = props.toLocal(e)
+                if (p) model.canvasPointerDown(p)
+            }}
+        >
+            <GridBackground />
+
+            <For each={model.widgets}>
                 {(w) => {
                     switch (w.tag) {
                         case 'rect':
-                            return <RectWidget w={w} mode={m.mode} onDragStart={onDragStart} />
+                            return <RectWidget w={w} {...wp} />
                         case 'button':
-                            return <ButtonWidget w={w} mode={m.mode} onDragStart={onDragStart} />
+                            return <ButtonWidget w={w} {...wp} />
                         case 'text':
-                            return <TextWidget w={w} mode={m.mode} onDragStart={onDragStart} />
+                            return <TextWidget w={w} {...wp} />
                         case 'annotation':
-                            return (
-                                <AnnotationWidget w={w} mode={m.mode} onDragStart={onDragStart} />
-                            )
+                            return <AnnotationWidget w={w} {...wp} />
                         default:
                             return assertNever(w)
                     }
                 }}
             </For>
 
-            <Show when={m.previewRect()}>
-                {(r) => (
-                    <path
-                        d={roughRect(r().w, r().h)}
-                        transform={`translate(${r().x}, ${r().y})`}
-                        fill='none'
-                        stroke={strokeColor}
-                        stroke-dasharray='5,5'
-                    />
-                )}
-            </Show>
-
-            <Show when={m.selectedWidgetBounds()}>
-                {(b) => (
-                    <rect
-                        x={b().x - 4}
-                        y={b().y - 4}
-                        width={b().w + 8}
-                        height={b().h + 8}
-                        fill='none'
-                        stroke='#2563eb'
-                        stroke-width='1.5'
-                        stroke-dasharray='4,3'
-                        pointer-events='none'
-                    />
-                )}
-            </Show>
+            <DrawPreview rect={model.previewRect} />
+            <SelectionOverlay bounds={model.selectedWidgetBounds} />
         </svg>
     )
 }
 
 // === APP ===
-export default function App() {
-    const m = createModel()
-    let canvasRef: SVGSVGElement | undefined
-
+function useCanvasCoords() {
+    let el: SVGSVGElement | undefined
+    const setRef = (svg: SVGSVGElement) => {
+        el = svg
+    }
     const toLocal = (e: PointerEvent): Point | null => {
-        if (!canvasRef) return null
-        const ctm = canvasRef.getScreenCTM()
+        if (!el) return null
+        const ctm = el.getScreenCTM()
         if (!ctm) return null
-        const pt = canvasRef.createSVGPoint()
+        const pt = el.createSVGPoint()
         pt.x = e.clientX
         pt.y = e.clientY
         const r = pt.matrixTransform(ctm.inverse())
         return { x: r.x, y: r.y }
     }
+    return { setRef, toLocal }
+}
 
+function useGlobalKeys(model: ModelApi) {
     const handleKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') m.cancel()
-        if (e.key === 'Delete' || e.key === 'Backspace') m.deleteSelected()
+        if (e.key === 'Escape') model.cancel()
+        if (e.key === 'Delete' || e.key === 'Backspace') model.deleteSelected()
     }
     window.addEventListener('keydown', handleKey)
     onCleanup(() => window.removeEventListener('keydown', handleKey))
+}
+
+export default function App() {
+    const model = createModel()
+    const { setRef, toLocal } = useCanvasCoords()
+    useGlobalKeys(model)
 
     return (
         <main
             class='relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none'
             onPointerMove={(e) => {
                 const p = toLocal(e)
-                if (p) m.pointerMove(p)
+                if (p) model.pointerMove(p)
             }}
-            onPointerUp={() => m.pointerUp()}
+            onPointerUp={() => model.pointerUp()}
         >
-            <Toolbar model={m} />
-            <Canvas model={m} setRef={(el) => (canvasRef = el)} toLocal={toLocal} />
+            <Toolbar model={model} />
+            <Canvas model={model} setRef={setRef} toLocal={toLocal} />
         </main>
     )
 }
