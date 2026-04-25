@@ -24,7 +24,7 @@ export type Mode =
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point }
 
-function widgetBounds(w: Widget): Bounds {
+export function widgetBounds(w: Widget): Bounds {
     switch (w.tag) {
         case 'rect':
         case 'button':
