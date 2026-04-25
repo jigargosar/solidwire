@@ -59,6 +59,11 @@ export function createModel() {
         return boundsFromPoints(m.start, m.current);
     });
 
+    const selectedWidgetBounds = createMemo<Bounds | null>(() => {
+        const w = selectedWidget();
+        return w ? widgetBounds(w) : null;
+    });
+
     const activeTool = (): Tool | null => {
         const m = mode();
         switch (m.tag) {
@@ -177,7 +182,9 @@ export function createModel() {
     return {
         widgets,
         mode,
+        selectedId,
         selectedWidget,
+        selectedWidgetBounds,
         previewRect,
         activeTool,
         toggleTool,

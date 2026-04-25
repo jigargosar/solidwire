@@ -1,7 +1,7 @@
 import {createMemo, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
-import {assertNever, createModel, widgetBounds, type Mode, type Tool, type Widget, type WidgetId} from "./model";
+import {assertNever, createModel, type Mode, type Tool, type Widget, type WidgetId} from "./model";
 import type {Point} from "./geom";
 import {Show} from "solid-js";
 
@@ -210,9 +210,7 @@ export default function App() {
                     />
                 )}</Show>
 
-                <Show when={m.selectedWidget()}>{(w) => {
-                    const b = () => widgetBounds(w());
-                    return (
+                <Show when={m.selectedWidgetBounds()}>{(b) => (
                     <rect
                         x={b().x - 4}
                         y={b().y - 4}
@@ -224,8 +222,7 @@ export default function App() {
                         stroke-dasharray="4,3"
                         pointer-events="none"
                     />
-                    );
-                }}</Show>
+                )}</Show>
             </svg>
         </main>
     );
