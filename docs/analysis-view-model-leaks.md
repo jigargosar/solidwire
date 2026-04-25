@@ -135,3 +135,150 @@ I haven't measured whether `dispatch(intent)` with a tagged union has any percei
 ---
 
 Want me to sketch step 1 (the registry) as a concrete diff against the current code, so you can see the shape before committing to the full sequence?
+
+# Round 2 — user pushback
+
+Intent boundary: 
+  alternative approach. view just forwards events, onKeyEvent, onPointerEvent etc.
+view passes all the information, when how model consumes it is upto the model. 
+
+model has complete information of world space. and view translates and sends world position.
+model exposes viewport information, view just uses it window into the world. model owns the camera, into the world.
+model returns a derived viewModel, i.e. controlled exposure.
+model stores and returns data about widgets, and view renders it.
+
+  // widgets/registry.ts
+  type WidgetKind<T extends Widget> = {
+    tag: T['tag']
+    bounds: (w: T) => Bounds
+    hitTest: (w: T, p: Point) => boolean
+    render: Component<{ w: T; selected: boolean }>
+    toolbar: { label: string; preview: JSX.Element; placement: 'click' | 'drag' }
+    create: (start: Point, end: Point) => T   // for drag-to-draw
+    place?: (p: Point) => T                   // for click-to-place
+  }
+
+this is mizing data + rendering logic. Either this should be split, or model manages only data, and exposes it, and view renders it via lookup. widgets will need registery, but modes/tools wont exponentially explode so state machine can handle it.
+
+Model needs a different kind of simplification, and we can never write code which guards by if s, but via switch. And it doesnt matter if the switch is 100 lines. as long as its not growing exponentially. 
+
+These are current thoughts, more are spinning in my head but they will depend on our discussion of these points. Express your conscerns, and comeup with mitigation strategies.
+
+# Round 2 — response
+
+## 1. View as a pure event forwarder
+
+> view just forwards `onKeyEvent`, `onPointerEvent`; model owns world/camera; view reads a derived `viewModel`.
+
+### Concerns
+
+1. **Hit-testing needs SVG geometry.** "What's under the pointer?" is answered by `document.elementFromPoint` or per-element `pointerEvents` — both are DOM-only. If the view forwards a raw `PointerEvent`, the model can't hit-test without reaching into the DOM, which breaks testability (model unit tests need a DOM).
+2. **Coordinate conversion needs the SVG element.** `getScreenCTM().inverse()` requires `SVGSVGElement`. If the view only forwards client coordinates, the model needs the matrix — fine, but the matrix changes on every resize/scroll, so the view has to push it on every event or the model has to ask for it.
+3. **`PointerEvent` is not serializable** and carries 30+ DOM-coupled fields. Forwarding it as-is leaks the DOM into the model surface. You lose the undo/replay property — events aren't reproducible.
+4. **`viewModel` shape isn't free.** "Model returns a derived viewModel" sounds clean, but in SolidJS, returning a snapshot object on every change defeats fine-grained reactivity. You'd want it to be a bag of accessors/memos — which is what `createModel` already returns. So "viewModel" is a renaming, not a structural change. Worth doing for clarity, but doesn't shift any leak.
+
+### Mitigations (★ recommended hybrid)
+
+1. **View does the minimum DOM work, then forwards a normalized intent.** Specifically:
+   1. Coordinate conversion (client → world via viewport + CTM) — view.
+   2. Hit-test (DOM → `Target`) — view.
+   3. Everything else (mode, selection, what-it-means) — model.
+2. **Model owns the camera as state, view reads it as a memo and applies it as an SVG `transform`.** This matches your "model owns the camera" instinct without forcing the model to do DOM math. The view's `toWorld` becomes `(clientPt) => applyInverse(camera(), clientCTM, clientPt)` — pure function, given camera + CTM.
+3. **`Intent` is the serializable boundary, not `Event`.** The view's job: `Event → Intent`. Two-line functions per handler. This preserves your "view just forwards" spirit while keeping the model DOM-free and replayable.
+
+> **Net:** I'd push back on "view forwards raw events." The view should forward *normalized intents* — that's the same architectural commitment with a thinner, testable boundary.
+
+## 2. Camera in the model
+
+### Concerns
+
+1. **Pan/zoom at 60fps mutating model state will trigger model-wide reactivity.** Every memo that closes over `camera()` re-runs on every wheel tick. If `selectionBounds` doesn't depend on camera, fine. But you have to be disciplined that *world-space* derivations don't accidentally read camera.
+2. **Undo/redo over camera is usually wrong.** Users don't want Ctrl+Z to undo a pan. So even if camera lives in the model, it must be excluded from the undo stack — meaning you already have two classes of model state (history vs. transient). That's fine, but it argues that camera *could* live in the view without losing anything.
+
+### Mitigation
+
+1. Keep camera in the model **as transient state** (not in the undo stack). Mark transient vs. historical explicitly — e.g., `widgets` and `selection` snapshot into history; `mode` and `camera` don't.
+2. Zoom-to-fit, "frame selection," and saved viewports are real features that need camera-in-model. So your instinct is right — just budget for the transient/historical split.
+
+## 3. Registry mixes data + rendering
+
+> "Either this should be split, or model manages only data and exposes it, and view renders it via lookup."
+
+You're right. I conflated two registries. Split them:
+
+```
+widgets/data-registry.ts     ← model-side. bounds, hitTest, create, place, defaults
+widgets/render-registry.ts   ← view-side.  render component, toolbar preview
+```
+
+1. **Model imports only `data-registry`.** No JSX, no Component types — testable in node.
+2. **View imports both** (data for hit-test if it does DOM-side hit-testing; render for components).
+3. The two registries are keyed by the same `Widget['tag']`. TypeScript can enforce that every tag appears in both via a mapped type:
+   ```ts
+   type DataRegistry  = { [K in Widget['tag']]: WidgetData<Extract<Widget,{tag:K}>> }
+   type RenderRegistry = { [K in Widget['tag']]: WidgetRender<Extract<Widget,{tag:K}>> }
+   ```
+   Add a new widget tag → both registries must add an entry → compile error elsewhere.
+
+This is strictly better than my original. Adopting.
+
+## 4. "Modes/tools won't explode, so state machine handles it"
+
+I agree, with one caveat.
+
+### Concerns
+
+1. **Modes don't explode in count, but they do explode in cross-product.** `mode × tool × selection-shape × modifier-keys` is where the combinatorics live. A flat `Mode` union handles this cleanly *only if* you resist the urge to encode tool/selection inside `Mode` variants. E.g., `drawing{kind}` is fine; `drawingWithMultiSelectAndShift` is the road to hell.
+2. **Some "modes" are really tool behaviors.** `drawing` for `rect` and `annotation` is identical except for what gets committed on `pointerUp`. Today this is handled by carrying `kind` in the mode. That works at 2 draw-tools; at 8, the `pointerUp` switch becomes "look up tool behavior." Which is the registry, again — but only the *behavior*, not rendering.
+
+### Mitigation
+
+1. **Keep `Mode` small and orthogonal.** Variants should describe *interaction shape* (idle, armed, drawing, dragging, resizing, panning, marquee-selecting), not *which tool* is active. Tool identity rides as a field inside the variant.
+2. **Tool behavior table** (model-side, separate from data-registry):
+   ```ts
+   type ToolBehavior = {
+     onArmedPointerDown: (p: Point, model) => Mode   // returns next mode
+     onDrawingPointerUp: (rect: Bounds, model) => Widget | null
+   }
+   ```
+   This is data, not switch cases. Adding a tool = one entry. **But** this only pays off at ~5+ tools; at 4, the switch is fine. So defer until you feel the pain.
+
+## 5. "No `if` guards — only `switch`"
+
+Strong agreement on the spirit. Two concerns about the absolute form:
+
+### Concerns
+
+1. **Some guards aren't on a discriminated union.** `if (!canvasRef) return` (null check), `if (rect.w > 5 && rect.h > 5)` (threshold), `if (!ctm)` — these aren't switchable; they're predicates over non-union values. Banning `if` here either forces awkward `Option<T>` types or just gets violated.
+2. **Switch-on-tag has a known weak spot: nested state.** When you need to dispatch on `mode.tag × intent.tag` (16 cases for 4×4), a flat switch becomes a 200-line table. That's *fine* by your "100 lines is OK" rule, but TS won't help you spot a missing cell unless you build the table as `Record<ModeTag, Record<IntentTag, Handler>>` — which is what reducer libraries do.
+
+### Mitigation
+
+1. **Rule, not absolute:** `if` is banned for *control-flow over discriminated unions*. `if` for null-checks and numeric thresholds is fine — they're not exhaustiveness-bearing.
+2. **For `mode × intent`,** build it as a 2D table indexed by tags, with a default `assertNever` per row. TS's `Record<Tag, ...>` enforces row-completeness; per-row `switch(intent.tag)` with `assertNever` enforces column-completeness. This is the "switch can be 100 lines" idea, with structure.
+
+## 6. The bigger concern I'd raise back to you
+
+Your proposals all point one direction: **make the model the universe, make the view a thin projection.** That's a coherent architecture (it's basically Elm/TEA). But it has a real cost:
+
+1. **Every DOM concern that touches state has to round-trip through intents.** Drag-and-drop ergonomics, pointer-capture, focus management, IME composition for text editing — all of these need the view to make decisions *immediately* (e.g., `setPointerCapture` must happen synchronously in the down handler). If the model dispatches asynchronously, you lose these.
+2. **SolidJS specifically rewards keeping reactive state close to where it's read.** Pushing everything into one `createModel` blob can hurt fine-grained updates if memos over-subscribe. This is fixable but worth noting.
+
+### Mitigation
+
+1. **Synchronous intent dispatch** — `dispatch(intent)` returns before the handler returns, so `setPointerCapture` etc. still work in the same tick.
+2. **Split the model into stores** as it grows: `widgetsStore`, `selectionStore`, `viewportStore`, `historyStore`. They can still be assembled by `createModel` and exposed as one object, but internally each is a separate reactive root. Defer until you see contention.
+
+---
+
+## Summary of where I'd land after your pushback
+
+1. ★ Adopt **split registries** (data-registry model-side, render-registry view-side). Strictly better.
+2. ★ Adopt **camera in model**, with explicit transient-vs-historical state classification.
+3. **Keep intent boundary**, but reframe it as your "view forwards events" with the view doing only coordinate conversion + hit-testing first. Intents are the normalized shape, not raw events.
+4. **Defer tool-behavior table** until 5+ tools. Switch is fine until then.
+5. **`switch` over discriminated unions, `if` allowed for non-union predicates** — codify as a rule.
+6. **`mode × intent` as a tag-indexed 2D table** when you reach the dispatch. Not yet.
+
+Which of these do you want to push on next? My instinct says the registry split is the cleanest first move because it's a pure refactor and forces you to name the data/render boundary before the harder intent work.
+
