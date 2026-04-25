@@ -282,3 +282,38 @@ Your proposals all point one direction: **make the model the universe, make the 
 
 Which of these do you want to push on next? My instinct says the registry split is the cleanest first move because it's a pure refactor and forces you to name the data/render boundary before the harder intent work.
 
+# Round 3 — resolution of the original 7 leaks
+
+Mapping each App.tsx leak from §1 onto the agreed architecture:
+
+| # | Leak | Resolution |
+|---|---|---|
+| 1 | View reads `mode().tag` (`cursorClass`, drag guard, crosshair) | Model exposes a derived `cursor()` accessor. View reads it, no tag inspection. |
+| 2 | `toLocal` + `if (!p) return` split across view/model | View always sends viewport coords as a pojo intent. No null guard at the call site. |
+| 3 | `stopPropagation` in `onDragStart` | Single SVG-root handler. No bubbling, no stop calls. |
+| 4 | `widgetBounds(w())` in view | Model exposes `selectionBounds()`. View renders it. |
+| 5 | `switch(w.tag)` widget→component map in view | Render-registry keyed by `Widget['tag']`. View uses `<Dynamic>`. |
+| 6 | Keyboard handler table in view | Keyboard pojos dispatched through the same intent path as pointer pojos. |
+| 7 | Mini-preview geometry in view + per-widget rough memos | Per-widget rough geometry stays in the widget component (memo over dimensions). Toolbar preview moves into the render-registry entry for that widget. One source per widget. |
+
+# Architectural ground rules (from rounds 2–3)
+
+1. **Model never touches DOM/SVG.**
+2. **View attaches handlers only to the SVG root.** No per-element handlers.
+3. **Wire shape:** view sends viewport-relative coordinates as pojos. Model interprets via the camera module.
+4. **Camera is its own module.** Owns viewport state and viewport↔world conversion. Model depends on it.
+5. **Default state location is the model.** UI-local state lives in components only when no event handler other than the one setting it reads it. Discover by need, not upfront.
+6. **Persistence:** only widgets and their version snapshots. Everything else is transient editor state.
+7. **Pojos, not raw events.** Custom serializable input types. Field set added lazily; both producer and consumer ship together.
+8. **Geometry is a shared pure module.** Used by model handlers; possibly by view for rendering math. No DOM, no reactivity.
+9. **Discriminated unions dispatch via `switch` + `assertNever`.** `if` is allowed for non-union predicates (null checks, thresholds).
+10. **Two registries** for widgets: data-registry (model-side: bounds, hit-test, create, place); render-registry (view-side: component, toolbar preview). Both keyed by `Widget['tag']`.
+
+# Open items deferred
+
+1. Tool-behavior table — defer until 5+ tools.
+2. `mode × intent` 2D dispatch table — defer until needed.
+3. Spatial index for hit-test — defer until measured.
+4. Text-editing overlay (foreignObject focus exception to single-SVG-handler rule) — when text editing arrives.
+
+
