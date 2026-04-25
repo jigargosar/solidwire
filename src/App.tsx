@@ -1,7 +1,8 @@
 import {createMemo, For, onCleanup, type Accessor, type JSX} from "solid-js";
 import rough from "roughjs";
 import type {Drawable} from "roughjs/bin/core";
-import {assertNever, createModel, widgetBounds, type Mode, type Point, type Tool, type Widget, type WidgetId} from "./model";
+import {assertNever, createModel, widgetBounds, type Mode, type Tool, type Widget, type WidgetId} from "./model";
+import type {Point} from "./geom";
 import {Show} from "solid-js";
 
 // --- ROUGH PRIMITIVES ---

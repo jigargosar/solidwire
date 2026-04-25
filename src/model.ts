@@ -1,13 +1,12 @@
 import {createMemo, createSignal} from "solid-js";
 import {createStore} from "solid-js/store";
+import {boundsFromPoints, type Bounds, type Point} from "./geom";
 
 export function assertNever(_: never): never {
     throw new Error('unreachable');
 }
 
 // --- TYPES ---
-export type Point = { x: number; y: number };
-
 export type WidgetId = string;
 
 export type Widget =
@@ -24,8 +23,6 @@ export type Mode =
     | { tag: 'armed'; tool: Tool }
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point };
-
-export type Bounds = { x: number; y: number; w: number; h: number };
 
 export function widgetBounds(w: Widget): Bounds {
     switch (w.tag) {
@@ -56,16 +53,10 @@ export function createModel() {
         return widgets.find(w => w.id === id) ?? null;
     });
 
-    type Rect = { x: number; y: number; w: number; h: number };
-    const previewRect = createMemo<Rect | null>(() => {
+    const previewRect = createMemo<Bounds | null>(() => {
         const m = mode();
         if (m.tag !== 'drawing') return null;
-        return {
-            x: Math.min(m.start.x, m.current.x),
-            y: Math.min(m.start.y, m.current.y),
-            w: Math.abs(m.start.x - m.current.x),
-            h: Math.abs(m.start.y - m.current.y),
-        };
+        return boundsFromPoints(m.start, m.current);
     });
 
     const activeTool = (): Tool | null => {
