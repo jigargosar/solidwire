@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MockBench — a wireframing tool with a sketchy hand-drawn aesthetic (built with SolidJS + roughjs). It's a thinking tool, not a production design tool: low fidelity is deliberate. See `docs/NorthStar.md` for the design philosophy ("as fast as a pencil", progressive disclosure).
 
+## Docs
+- Don't assume everything is correct, or set in stone
+
 ## Commands
 
 Package manager is **pnpm** (workspace-enabled via `pnpm-workspace.yaml`).
