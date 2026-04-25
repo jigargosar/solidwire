@@ -16,7 +16,7 @@ export type Widget =
     | { tag: 'annotation'; id: WidgetId; x: number; y: number; w: number; h: number; text: string };
 
 export type Tool = 'rect' | 'button' | 'text' | 'annotation';
-export type DrawKind = 'rect' | 'annotation';
+type DrawKind = 'rect' | 'annotation';
 
 export type Mode =
     | { tag: 'idle' }
@@ -24,7 +24,7 @@ export type Mode =
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point };
 
-export function widgetBounds(w: Widget): Bounds {
+function widgetBounds(w: Widget): Bounds {
     switch (w.tag) {
         case 'rect':
         case 'button':
@@ -182,8 +182,6 @@ export function createModel() {
     return {
         widgets,
         mode,
-        selectedId,
-        selectedWidget,
         selectedWidgetBounds,
         previewRect,
         activeTool,
