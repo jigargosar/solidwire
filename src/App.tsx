@@ -29,8 +29,6 @@ const toPath = (d: Drawable) =>
 const roughRect = (w: number, h: number) =>
     toPath(generator.rectangle(0, 0, w, h, { roughness: 1.2, stroke: strokeColor, strokeWidth: 2 }))
 
-const labelClass = 'select-none text-2xl fill-gray-800 font-bold'
-
 // === WIDGET TYPES ===
 type RectW = Extract<Widget, { tag: 'rect' }>
 type ButtonW = Extract<Widget, { tag: 'button' }>
@@ -44,8 +42,6 @@ type WidgetProps<T> = {
     onDragStart: (id: WidgetId, e: PointerEvent) => void
 }
 
-const cursorClass = (mode: Accessor<Mode>) => (mode().tag === 'idle' ? 'cursor-move' : '')
-
 // === FRAME ===
 function DraggableGroup(props: {
     id: WidgetId
@@ -58,7 +54,7 @@ function DraggableGroup(props: {
     return (
         <g
             transform={`translate(${props.x}, ${props.y})`}
-            class={cursorClass(props.mode)}
+            class={props.mode().tag === 'idle' ? 'cursor-move' : ''}
             onPointerDown={(e) => props.onDragStart(props.id, e)}
         >
             {props.children}
@@ -114,7 +110,7 @@ function ButtonWidget(props: WidgetProps<ButtonW>) {
                 y={props.w.h / 2 + 10}
                 text-anchor='middle'
                 style={{ 'font-family': fontFamily }}
-                class={labelClass}
+                class='select-none text-2xl fill-gray-800 font-bold'
                 pointer-events='none'
             >
                 Button
@@ -174,7 +170,7 @@ function TextWidget(props: WidgetProps<TextW>) {
             />
             <text
                 style={{ 'font-family': fontFamily }}
-                class={labelClass}
+                class='select-none text-2xl fill-gray-800 font-bold'
                 pointer-events='none'
             >
                 {props.w.content}
