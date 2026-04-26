@@ -1,11 +1,11 @@
-import { Show, type Accessor } from 'solid-js'
+import { Show, createSignal, type Accessor } from 'solid-js'
 import { createModel, type Model, type WidgetId } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
 import { createCamera, type Camera } from './camera'
-import { createWindowListener } from './primitives'
+import { createElementSize, createWindowListener } from './primitives'
 
 function GridBackground() {
     return (
@@ -84,28 +84,23 @@ function Canvas(props: {
 }
 
 function createCanvasCoords() {
-    let el: SVGSVGElement | undefined
-    const setRef = (svg: SVGSVGElement) => {
-        el = svg
-    }
+    const [el, setRef] = createSignal<SVGSVGElement | null>(null)
     const toLocal = (e: { clientX: number; clientY: number }): Point | null => {
-        if (!el) return null
-        const ctm = el.getScreenCTM()
+        const svg = el()
+        if (!svg) return null
+        const ctm = svg.getScreenCTM()
         if (!ctm) return null
-        const pt = el.createSVGPoint()
+        const pt = svg.createSVGPoint()
         pt.x = e.clientX
         pt.y = e.clientY
         const r = pt.matrixTransform(ctm.inverse())
         return { x: r.x, y: r.y }
     }
-    const isCanvas = (target: EventTarget | null): boolean =>
-        target instanceof Node && !!el && el.contains(target)
-    const getViewport = (): { w: number; h: number } | null => {
-        if (!el) return null
-        const r = el.getBoundingClientRect()
-        return { w: r.width, h: r.height }
+    const isCanvas = (target: EventTarget | null): boolean => {
+        const svg = el()
+        return target instanceof Node && svg !== null && svg.contains(target)
     }
-    return { setRef, toLocal, isCanvas, getViewport }
+    return { el, setRef, toLocal, isCanvas }
 }
 
 const PAN_THRESHOLD = 3
@@ -117,16 +112,17 @@ const FIT_PAD = 24
 
 export default function App() {
     const model = createModel()
-    const { setRef, toLocal, isCanvas, getViewport } = createCanvasCoords()
+    const { el, setRef, toLocal, isCanvas } = createCanvasCoords()
+    const canvasSize = createElementSize(el)
 
     const getScreenBounds = (): Bounds | null => {
-        const vp = getViewport()
-        if (!vp) return null
+        const s = canvasSize()
+        if (!s) return null
         return {
             x: TOOLBAR_W + FIT_PAD,
             y: FIT_PAD,
-            w: vp.w - TOOLBAR_W - FIT_PAD * 2,
-            h: vp.h - FIT_PAD * 2,
+            w: s.width - TOOLBAR_W - FIT_PAD * 2,
+            h: s.height - FIT_PAD * 2,
         }
     }
 
