@@ -4,7 +4,7 @@ import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
-import { createCamera, type Camera } from './camera'
+import { createCamera, MIN_SCALE, type Camera } from './camera'
 
 function GridBackground() {
     return (
@@ -117,8 +117,8 @@ function installGlobalKeys(handlers: {
         const modified = e.metaKey || e.ctrlKey || e.altKey
         if (e.key === 'Escape') handlers.cancel()
         if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) handlers.deleteSelected()
-        if (e.key === '0' && !modified) handlers.reset()
-        if (e.key === '1' && !modified) handlers.fit()
+        if (e.key === 'r' && !modified) handlers.reset()
+        if (e.key === 'f' && !modified) handlers.fit()
     }
     window.addEventListener('keydown', handleKey)
     onCleanup(() => window.removeEventListener('keydown', handleKey))
@@ -128,21 +128,47 @@ const PAN_THRESHOLD = 3
 
 type PanGesture = { startX: number; startY: number; panning: boolean }
 
+const TOOLBAR_W = 140
+const FIT_PAD = 24
+
 export default function App() {
     const model = createModel()
-    const camera = createCamera()
     const { setRef, toLocal, isCanvas, getViewport } = createCanvasCoords()
+
+    const getContentArea = (): Bounds | null => {
+        const vp = getViewport()
+        if (!vp) return null
+        return {
+            x: TOOLBAR_W + FIT_PAD,
+            y: FIT_PAD,
+            w: vp.w - TOOLBAR_W - FIT_PAD * 2,
+            h: vp.h - FIT_PAD * 2,
+        }
+    }
+
+    const camera = createCamera(() => {
+        const b = model.contentBounds()
+        const area = getContentArea()
+        if (!b || !area) return MIN_SCALE
+        const fitS = Math.min(area.w / Math.max(1, b.w), area.h / Math.max(1, b.h))
+        return Math.min(MIN_SCALE, fitS)
+    })
 
     const fit = () => {
         const b = model.contentBounds()
+        const area = getContentArea()
+        if (b && area) camera.fit(b, area)
+    }
+
+    const reset = () => {
         const vp = getViewport()
-        if (b && vp) camera.fit(b, vp.w, vp.h)
+        if (vp) camera.reset({ x: vp.w / 2, y: vp.h / 2 })
     }
 
     installGlobalKeys({
         cancel: model.cancel,
         deleteSelected: model.deleteSelected,
-        reset: camera.reset,
+        reset,
         fit,
     })
 
@@ -214,6 +240,9 @@ export default function App() {
         >
             <Toolbar model={model} />
             <Canvas model={model} camera={camera} setRef={setRef} onDragStart={onDragStart} />
+            <div class='absolute top-3 right-3 z-10 rounded-md border border-gray-400 bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 shadow-sm pointer-events-none'>
+                {Math.round(camera.scale() * 100)}%
+            </div>
         </main>
     )
 }

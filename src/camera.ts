@@ -1,9 +1,8 @@
 import { createSignal, type Accessor } from 'solid-js'
 import type { Bounds, Point } from './geom'
 
-const MIN_SCALE = 0.1
-const MAX_SCALE = 8
-const FIT_PADDING = 40
+export const MIN_SCALE = 0.1
+const MAX_SCALE = 4
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 
 export interface Camera {
@@ -14,11 +13,11 @@ export interface Camera {
     worldToScreen: (p: Point) => Point
     panBy: (dx: number, dy: number) => void
     zoomAt: (p: Point, factor: number) => void
-    fit: (b: Bounds, vw: number, vh: number) => void
-    reset: () => void
+    fit: (b: Bounds, vp: Bounds) => void
+    reset: (center: Point) => void
 }
 
-export function createCamera(): Camera {
+export function createCamera(getMinScale: () => number = () => MIN_SCALE): Camera {
     const [tx, setTx] = createSignal(0)
     const [ty, setTy] = createSignal(0)
     const [scale, setScale] = createSignal(1)
@@ -40,7 +39,7 @@ export function createCamera(): Camera {
 
     const zoomAt = (p: Point, factor: number) => {
         const oldScale = scale()
-        const newScale = clamp(oldScale * factor, MIN_SCALE, MAX_SCALE)
+        const newScale = clamp(oldScale * factor, getMinScale(), MAX_SCALE)
         const worldX = (p.x - tx()) / oldScale
         const worldY = (p.y - ty()) / oldScale
         setScale(newScale)
@@ -48,24 +47,18 @@ export function createCamera(): Camera {
         setTy(p.y - worldY * newScale)
     }
 
-    const fit = (b: Bounds, vw: number, vh: number) => {
-        const availW = Math.max(1, vw - 2 * FIT_PADDING)
-        const availH = Math.max(1, vh - 2 * FIT_PADDING)
-        const sx = availW / Math.max(1, b.w)
-        const sy = availH / Math.max(1, b.h)
-        const newScale = clamp(Math.min(sx, sy), MIN_SCALE, MAX_SCALE)
+    const fit = (b: Bounds, vp: Bounds) => {
+        const sx = vp.w / Math.max(1, b.w)
+        const sy = vp.h / Math.max(1, b.h)
+        const newScale = Math.min(sx, sy)
         const cx = b.x + b.w / 2
         const cy = b.y + b.h / 2
         setScale(newScale)
-        setTx(vw / 2 - cx * newScale)
-        setTy(vh / 2 - cy * newScale)
+        setTx(vp.x + vp.w / 2 - cx * newScale)
+        setTy(vp.y + vp.h / 2 - cy * newScale)
     }
 
-    const reset = () => {
-        setTx(0)
-        setTy(0)
-        setScale(1)
-    }
+    const reset = (center: Point) => zoomAt(center, 1 / scale())
 
     return { tx, ty, scale, screenToWorld, worldToScreen, panBy, zoomAt, fit, reset }
 }
