@@ -79,7 +79,7 @@ function ToolTile(props: {
 export function Toolbar(props: { model: Model }) {
     return (
         <aside class='absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]'>
-            <div class='flex flex-col gap-  3'>
+            <div class='flex flex-col gap-3'>
                 <For each={tools}>
                     {(t) => (
                         <ToolTile
