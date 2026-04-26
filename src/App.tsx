@@ -1,4 +1,4 @@
-import { createMemo, For, onCleanup, type Accessor, type JSX } from 'solid-js'
+import { createMemo, For, onCleanup, Show, type Accessor, type JSX } from 'solid-js'
 import rough from 'roughjs'
 import type { Drawable } from 'roughjs/bin/core'
 import {
@@ -11,7 +11,6 @@ import {
     type WidgetId,
 } from './model'
 import type { Bounds, Point } from './geom'
-import { Show } from 'solid-js'
 
 type ModelApi = ReturnType<typeof createModel>
 
@@ -379,7 +378,7 @@ function Canvas(props: {
 }
 
 // === APP ===
-function useCanvasCoords() {
+function createCanvasCoords() {
     let el: SVGSVGElement | undefined
     const setRef = (svg: SVGSVGElement) => {
         el = svg
@@ -397,7 +396,7 @@ function useCanvasCoords() {
     return { setRef, toLocal }
 }
 
-function useGlobalKeys(model: ModelApi) {
+function createGlobalKeys(model: ModelApi) {
     const handleKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') model.cancel()
         if (e.key === 'Delete' || e.key === 'Backspace') model.deleteSelected()
@@ -408,8 +407,8 @@ function useGlobalKeys(model: ModelApi) {
 
 export default function App() {
     const model = createModel()
-    const { setRef, toLocal } = useCanvasCoords()
-    useGlobalKeys(model)
+    const { setRef, toLocal } = createCanvasCoords()
+    createGlobalKeys(model)
 
     return (
         <main
