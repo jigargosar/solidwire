@@ -180,15 +180,11 @@ export default function App() {
             onWheel={(e) => {
                 if (e.ctrlKey || e.metaKey) e.preventDefault()
                 if (!isCanvas(e.target)) return
+                e.preventDefault()
                 const p = toLocal(e)
                 if (!p) return
-                if (e.ctrlKey || e.metaKey) {
-                    const factor = Math.exp(-e.deltaY * 0.01)
-                    camera.zoomAt(p, factor)
-                } else {
-                    e.preventDefault()
-                    camera.panBy(-e.deltaX, -e.deltaY)
-                }
+                const factor = Math.exp(-e.deltaY * 0.01)
+                camera.zoomAt(p, factor)
             }}
         >
             <Toolbar model={model} />
