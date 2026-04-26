@@ -199,16 +199,9 @@ function TextWidget(props: WidgetProps<TextW>) {
 }
 
 // === TOOLBAR ===
-const miniRectDrawable = generator.rectangle(10, 5, 60, 30, {
-    roughness: 1.0,
-    stroke: strokeColor,
-    strokeWidth: 1.5,
-})
-const miniButtonDrawable = generator.rectangle(5, 5, 70, 30, {
-    roughness: 1.0,
-    stroke: strokeColor,
-    strokeWidth: 1.5,
-})
+const miniOpts = { roughness: 1.0, stroke: strokeColor, strokeWidth: 1.5 }
+const miniRectDrawable = generator.rectangle(10, 5, 60, 30, miniOpts)
+const miniButtonDrawable = generator.rectangle(5, 5, 70, 30, miniOpts)
 
 function MiniPath(props: { drawable: Drawable; dashed?: boolean }) {
     return (
@@ -401,7 +394,7 @@ function createCanvasCoords() {
     return { setRef, toLocal, isCanvas }
 }
 
-function createGlobalKeys(model: Model) {
+function installGlobalKeys(model: Model) {
     const handleKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') model.cancel()
         if (e.key === 'Delete' || e.key === 'Backspace') model.deleteSelected()
@@ -413,7 +406,7 @@ function createGlobalKeys(model: Model) {
 export default function App() {
     const model = createModel()
     const { setRef, toLocal, isCanvas } = createCanvasCoords()
-    createGlobalKeys(model)
+    installGlobalKeys(model)
 
     return (
         <main
