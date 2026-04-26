@@ -1,10 +1,11 @@
-import { onCleanup, Show, type Accessor } from 'solid-js'
+import { Show, type Accessor } from 'solid-js'
 import { createModel, type Model, type WidgetId } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
 import { createCamera, type Camera } from './camera'
+import { createWindowListener } from './primitives'
 
 function GridBackground() {
     return (
@@ -107,23 +108,6 @@ function createCanvasCoords() {
     return { setRef, toLocal, isCanvas, getViewport }
 }
 
-function installGlobalKeys(handlers: {
-    cancel: () => void
-    deleteSelected: () => void
-    reset: () => void
-    fit: () => void
-}) {
-    const handleKey = (e: KeyboardEvent) => {
-        const modified = e.metaKey || e.ctrlKey || e.altKey
-        if (e.key === 'Escape') handlers.cancel()
-        if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) handlers.deleteSelected()
-        if (e.key === 'r' && !modified) handlers.reset()
-        if (e.key === 'f' && !modified) handlers.fit()
-    }
-    window.addEventListener('keydown', handleKey)
-    onCleanup(() => window.removeEventListener('keydown', handleKey))
-}
-
 const PAN_THRESHOLD = 3
 
 type PanGesture = { startX: number; startY: number; panning: boolean }
@@ -151,11 +135,12 @@ export default function App() {
         screenBounds: getScreenBounds,
     })
 
-    installGlobalKeys({
-        cancel: model.cancel,
-        deleteSelected: model.deleteSelected,
-        reset: camera.reset,
-        fit: camera.fit,
+    createWindowListener('keydown', (e) => {
+        const modified = e.metaKey || e.ctrlKey || e.altKey
+        if (e.key === 'Escape') model.cancel()
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) model.deleteSelected()
+        if (e.key === 'r' && !modified) camera.reset()
+        if (e.key === 'f' && !modified) camera.fit()
     })
 
     let pan: PanGesture | null = null
