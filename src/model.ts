@@ -1,5 +1,5 @@
-import { createMemo, createSignal } from 'solid-js'
-import { createStore } from 'solid-js/store'
+import { createMemo, createSignal, type Accessor } from 'solid-js'
+import { createStore, type Store } from 'solid-js/store'
 import { boundsFromPoints, type Bounds, type Point } from './geom'
 
 export function assertNever(_: never): never {
@@ -38,7 +38,22 @@ export function widgetBounds(w: Widget): Bounds {
 }
 
 // --- MODEL ---
-export function createModel() {
+export interface Model {
+    widgets: Store<Widget[]>
+    mode: Accessor<Mode>
+    selectedWidgetBounds: Accessor<Bounds | null>
+    previewRect: Accessor<Bounds | null>
+    activeTool: () => Tool | null
+    toggleTool: (tool: Tool) => void
+    cancel: () => void
+    deleteSelected: () => void
+    canvasPointerDown: (p: Point) => void
+    widgetPointerDown: (id: WidgetId, cursor: Point) => void
+    pointerMove: (p: Point) => void
+    pointerUp: () => void
+}
+
+export function createModel(): Model {
     const newId = (): WidgetId => crypto.randomUUID()
 
     const [widgets, setWidgets] = createStore<Widget[]>([

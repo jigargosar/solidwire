@@ -6,13 +6,12 @@ import {
     createModel,
     widgetBounds,
     type Mode,
+    type Model,
     type Tool,
     type Widget,
     type WidgetId,
 } from './model'
 import type { Bounds, Point } from './geom'
-
-type ModelApi = ReturnType<typeof createModel>
 
 // === ROUGH PRIMITIVES ===
 const generator = rough.generator()
@@ -259,7 +258,7 @@ function ToolTile(props: {
     )
 }
 
-function Toolbar(props: { model: ModelApi }) {
+function Toolbar(props: { model: Model }) {
     return (
         <aside class='absolute top-3 left-3 bottom-3 w-28 overflow-y-auto rounded-xl border border-gray-400 bg-gray-200 z-10 p-3 shadow-[0_0_30px_-5px_rgba(0,0,0,0.25)]'>
             <div class='flex flex-col gap-3'>
@@ -329,7 +328,7 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
 }
 
 function Canvas(props: {
-    model: ModelApi
+    model: Model
     setRef: (el: SVGSVGElement) => void
     toLocal: (e: PointerEvent) => Point | null
 }) {
@@ -396,7 +395,7 @@ function createCanvasCoords() {
     return { setRef, toLocal }
 }
 
-function createGlobalKeys(model: ModelApi) {
+function createGlobalKeys(model: Model) {
     const handleKey = (e: KeyboardEvent) => {
         if (e.key === 'Escape') model.cancel()
         if (e.key === 'Delete' || e.key === 'Backspace') model.deleteSelected()
