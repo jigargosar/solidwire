@@ -57,16 +57,8 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
 function Canvas(props: {
     model: Model
     setRef: (el: SVGSVGElement) => void
-    toLocal: (e: PointerEvent) => Point | null
+    onDragStart: (id: WidgetId, e: PointerEvent) => void
 }) {
-    const onDragStart = (id: WidgetId, e: PointerEvent) => {
-        if (props.model.mode().tag !== 'idle') return
-        const p = props.toLocal(e)
-        if (!p) return
-        e.stopPropagation()
-        props.model.widgetPointerDown(id, p)
-    }
-
     return (
         <svg
             ref={props.setRef}
@@ -76,7 +68,7 @@ function Canvas(props: {
 
             <For each={props.model.widgets}>
                 {(w) => (
-                    <WidgetView w={w} mode={props.model.mode} onDragStart={onDragStart} />
+                    <WidgetView w={w} mode={props.model.mode} onDragStart={props.onDragStart} />
                 )}
             </For>
 
@@ -120,6 +112,14 @@ export default function App() {
     const { setRef, toLocal, isCanvas } = createCanvasCoords()
     installGlobalKeys(model)
 
+    const onDragStart = (id: WidgetId, e: PointerEvent) => {
+        if (model.mode().tag !== 'idle') return
+        const p = toLocal(e)
+        if (!p) return
+        e.stopPropagation()
+        model.widgetPointerDown(id, p)
+    }
+
     return (
         <main
             class='relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none'
@@ -135,7 +135,7 @@ export default function App() {
             onPointerUp={() => model.pointerUp()}
         >
             <Toolbar model={model} />
-            <Canvas model={model} setRef={setRef} toLocal={toLocal} />
+            <Canvas model={model} setRef={setRef} onDragStart={onDragStart} />
         </main>
     )
 }
