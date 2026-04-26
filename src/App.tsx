@@ -4,7 +4,7 @@ import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
-import { createCamera, MIN_SCALE, type Camera } from './camera'
+import { createCamera, type Camera } from './camera'
 
 function GridBackground() {
     return (
@@ -135,7 +135,7 @@ export default function App() {
     const model = createModel()
     const { setRef, toLocal, isCanvas, getViewport } = createCanvasCoords()
 
-    const getContentArea = (): Bounds | null => {
+    const getScreenBounds = (): Bounds | null => {
         const vp = getViewport()
         if (!vp) return null
         return {
@@ -146,30 +146,16 @@ export default function App() {
         }
     }
 
-    const camera = createCamera(() => {
-        const b = model.contentBounds()
-        const area = getContentArea()
-        if (!b || !area) return MIN_SCALE
-        const fitS = Math.min(area.w / Math.max(1, b.w), area.h / Math.max(1, b.h))
-        return Math.min(MIN_SCALE, fitS)
+    const camera = createCamera({
+        worldBounds: model.worldBounds,
+        screenBounds: getScreenBounds,
     })
-
-    const fit = () => {
-        const b = model.contentBounds()
-        const area = getContentArea()
-        if (b && area) camera.fit(b, area)
-    }
-
-    const reset = () => {
-        const vp = getViewport()
-        if (vp) camera.reset({ x: vp.w / 2, y: vp.h / 2 })
-    }
 
     installGlobalKeys({
         cancel: model.cancel,
         deleteSelected: model.deleteSelected,
-        reset,
-        fit,
+        reset: camera.reset,
+        fit: camera.fit,
     })
 
     let pan: PanGesture | null = null
@@ -233,9 +219,7 @@ export default function App() {
                 if (!isCanvas(e.target)) return
                 e.preventDefault()
                 const p = toLocal(e)
-                if (!p) return
-                const factor = Math.exp(-e.deltaY * 0.01)
-                camera.zoomAt(p, factor)
+                if (p) camera.zoomByDelta(p, e.deltaY)
             }}
         >
             <Toolbar model={model} />

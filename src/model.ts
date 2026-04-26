@@ -43,7 +43,7 @@ export interface Model {
     mode: Accessor<Mode>
     selectedWidgetBounds: Accessor<Bounds | null>
     previewRect: Accessor<Bounds | null>
-    contentBounds: Accessor<Bounds | null>
+    worldBounds: Accessor<Bounds | null>
     activeTool: () => Tool | null
     toggleTool: (tool: Tool) => void
     cancel: () => void
@@ -80,7 +80,7 @@ export function createModel(): Model {
         return w ? widgetBounds(w) : null
     })
 
-    const contentBounds = createMemo<Bounds | null>(() => {
+    const worldBounds = createMemo<Bounds | null>(() => {
         if (widgets.length === 0) return null
         let minX = Infinity
         let minY = Infinity
@@ -230,7 +230,7 @@ export function createModel(): Model {
         mode,
         selectedWidgetBounds,
         previewRect,
-        contentBounds,
+        worldBounds,
         activeTool,
         toggleTool,
         cancel,
