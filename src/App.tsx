@@ -99,13 +99,26 @@ function createCanvasCoords() {
     }
     const isCanvas = (target: EventTarget | null): boolean =>
         target instanceof Node && !!el && el.contains(target)
-    return { setRef, toLocal, isCanvas }
+    const getViewport = (): { w: number; h: number } | null => {
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { w: r.width, h: r.height }
+    }
+    return { setRef, toLocal, isCanvas, getViewport }
 }
 
-function installGlobalKeys(model: Model) {
+function installGlobalKeys(handlers: {
+    cancel: () => void
+    deleteSelected: () => void
+    reset: () => void
+    fit: () => void
+}) {
     const handleKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') model.cancel()
-        if (e.key === 'Delete' || e.key === 'Backspace') model.deleteSelected()
+        const modified = e.metaKey || e.ctrlKey || e.altKey
+        if (e.key === 'Escape') handlers.cancel()
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) handlers.deleteSelected()
+        if (e.key === '0' && !modified) handlers.reset()
+        if (e.key === '1' && !modified) handlers.fit()
     }
     window.addEventListener('keydown', handleKey)
     onCleanup(() => window.removeEventListener('keydown', handleKey))
@@ -118,8 +131,20 @@ type PanGesture = { startX: number; startY: number; panning: boolean }
 export default function App() {
     const model = createModel()
     const camera = createCamera()
-    const { setRef, toLocal, isCanvas } = createCanvasCoords()
-    installGlobalKeys(model)
+    const { setRef, toLocal, isCanvas, getViewport } = createCanvasCoords()
+
+    const fit = () => {
+        const b = model.contentBounds()
+        const vp = getViewport()
+        if (b && vp) camera.fit(b, vp.w, vp.h)
+    }
+
+    installGlobalKeys({
+        cancel: model.cancel,
+        deleteSelected: model.deleteSelected,
+        reset: camera.reset,
+        fit,
+    })
 
     let pan: PanGesture | null = null
 
