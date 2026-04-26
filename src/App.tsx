@@ -41,10 +41,11 @@ type WidgetProps<T> = {
 }
 
 // === FRAME ===
-function DraggableGroup(props: {
+function WidgetFrame(props: {
     id: WidgetId
     x: number
     y: number
+    hit: Bounds
     mode: Accessor<Mode>
     onDragStart: (id: WidgetId, e: PointerEvent) => void
     children: JSX.Element
@@ -55,6 +56,13 @@ function DraggableGroup(props: {
             class={props.mode().tag === 'idle' ? 'cursor-move' : ''}
             onPointerDown={(e) => props.onDragStart(props.id, e)}
         >
+            <rect
+                x={props.hit.x}
+                y={props.hit.y}
+                width={props.hit.w}
+                height={props.hit.h}
+                fill='transparent'
+            />
             {props.children}
         </g>
     )
@@ -67,18 +75,19 @@ function RoughBox(
     },
 ) {
     const path = createMemo(() => roughRect(props.w.w, props.w.h))
+    const hit = createMemo(() => ({ x: 0, y: 0, w: props.w.w, h: props.w.h }))
     return (
-        <DraggableGroup
+        <WidgetFrame
             id={props.w.id}
             x={props.w.x}
             y={props.w.y}
+            hit={hit()}
             mode={props.mode}
             onDragStart={props.onDragStart}
         >
-            <rect width={props.w.w} height={props.w.h} fill='transparent' />
             <path d={path()} pointer-events='none' {...props.pathProps} />
             {props.children}
-        </DraggableGroup>
+        </WidgetFrame>
     )
 }
 
@@ -149,23 +158,35 @@ function AnnotationWidget(props: WidgetProps<AnnotationW>) {
     )
 }
 
+function WidgetView(props: WidgetProps<Widget>) {
+    switch (props.w.tag) {
+        case 'rect':
+            return <RectWidget {...props} w={props.w} />
+        case 'button':
+            return <ButtonWidget {...props} w={props.w} />
+        case 'text':
+            return <TextWidget {...props} w={props.w} />
+        case 'annotation':
+            return <AnnotationWidget {...props} w={props.w} />
+        default:
+            return assertNever(props.w)
+    }
+}
+
 function TextWidget(props: WidgetProps<TextW>) {
-    const b = createMemo(() => widgetBounds(props.w))
+    const hit = createMemo(() => {
+        const b = widgetBounds(props.w)
+        return { x: b.x - props.w.x, y: b.y - props.w.y, w: b.w, h: b.h }
+    })
     return (
-        <DraggableGroup
+        <WidgetFrame
             id={props.w.id}
             x={props.w.x}
             y={props.w.y}
+            hit={hit()}
             mode={props.mode}
             onDragStart={props.onDragStart}
         >
-            <rect
-                x={b().x - props.w.x}
-                y={b().y - props.w.y}
-                width={b().w}
-                height={b().h}
-                fill='transparent'
-            />
             <text
                 style={{ 'font-family': fontFamily }}
                 class='select-none text-2xl fill-gray-800 font-bold'
@@ -173,7 +194,7 @@ function TextWidget(props: WidgetProps<TextW>) {
             >
                 {props.w.content}
             </text>
-        </DraggableGroup>
+        </WidgetFrame>
     )
 }
 
@@ -340,34 +361,17 @@ function Canvas(props: {
         props.model.widgetPointerDown(id, p)
     }
 
-    const wp = { mode: props.model.mode, onDragStart }
-
     return (
         <svg
             ref={props.setRef}
             class={`h-full w-full block bg-gray-100 ${props.model.activeTool() ? 'cursor-crosshair' : ''}`}
-            onPointerDown={(e) => {
-                const p = props.toLocal(e)
-                if (p) props.model.canvasPointerDown(p)
-            }}
         >
             <GridBackground />
 
             <For each={props.model.widgets}>
-                {(w) => {
-                    switch (w.tag) {
-                        case 'rect':
-                            return <RectWidget w={w} {...wp} />
-                        case 'button':
-                            return <ButtonWidget w={w} {...wp} />
-                        case 'text':
-                            return <TextWidget w={w} {...wp} />
-                        case 'annotation':
-                            return <AnnotationWidget w={w} {...wp} />
-                        default:
-                            return assertNever(w)
-                    }
-                }}
+                {(w) => (
+                    <WidgetView w={w} mode={props.model.mode} onDragStart={onDragStart} />
+                )}
             </For>
 
             <DrawPreview rect={props.model.previewRect} />
@@ -392,7 +396,9 @@ function createCanvasCoords() {
         const r = pt.matrixTransform(ctm.inverse())
         return { x: r.x, y: r.y }
     }
-    return { setRef, toLocal }
+    const isCanvas = (target: EventTarget | null): boolean =>
+        target instanceof Node && !!el && el.contains(target)
+    return { setRef, toLocal, isCanvas }
 }
 
 function createGlobalKeys(model: Model) {
@@ -406,12 +412,17 @@ function createGlobalKeys(model: Model) {
 
 export default function App() {
     const model = createModel()
-    const { setRef, toLocal } = createCanvasCoords()
+    const { setRef, toLocal, isCanvas } = createCanvasCoords()
     createGlobalKeys(model)
 
     return (
         <main
             class='relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none'
+            onPointerDown={(e) => {
+                if (!isCanvas(e.target)) return
+                const p = toLocal(e)
+                if (p) model.canvasPointerDown(p)
+            }}
             onPointerMove={(e) => {
                 const p = toLocal(e)
                 if (p) model.pointerMove(p)
