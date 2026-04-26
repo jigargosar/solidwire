@@ -1,4 +1,4 @@
-import { createMemo, type Accessor, type JSX } from 'solid-js'
+import { createMemo, For, type Accessor, type JSX } from 'solid-js'
 import {
     assertNever,
     widgetBounds,
@@ -162,7 +162,7 @@ function TextWidget(props: WidgetProps<TextW>) {
     )
 }
 
-export function WidgetView(props: WidgetProps<Widget>) {
+function WidgetView(props: WidgetProps<Widget>) {
     switch (props.w.tag) {
         case 'rect':
             return <RectWidget {...props} w={props.w} />
@@ -175,4 +175,16 @@ export function WidgetView(props: WidgetProps<Widget>) {
         default:
             return assertNever(props.w)
     }
+}
+
+export function Widgets(props: {
+    widgets: Widget[]
+    mode: Accessor<Mode>
+    onDragStart: (id: WidgetId, e: PointerEvent) => void
+}) {
+    return (
+        <For each={props.widgets}>
+            {(w) => <WidgetView w={w} mode={props.mode} onDragStart={props.onDragStart} />}
+        </For>
+    )
 }

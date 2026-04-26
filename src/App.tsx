@@ -1,9 +1,10 @@
-import { For, onCleanup, Show, type Accessor } from 'solid-js'
+import { onCleanup, Show, type Accessor } from 'solid-js'
 import { createModel, type Model, type WidgetId } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
-import { WidgetView } from './widgets'
+import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
+import { createCamera, type Camera } from './camera'
 
 function GridBackground() {
     return (
@@ -13,7 +14,7 @@ function GridBackground() {
                     <circle cx='2' cy='2' r='0.8' class='fill-blue-400' />
                 </pattern>
             </defs>
-            <rect width='100%' height='100%' fill='url(#dotGrid)' />
+            <rect x={-100000} y={-100000} width={200000} height={200000} fill='url(#dotGrid)' />
         </>
     )
 }
@@ -56,24 +57,27 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
 
 function Canvas(props: {
     model: Model
+    camera: Camera
     setRef: (el: SVGSVGElement) => void
     onDragStart: (id: WidgetId, e: PointerEvent) => void
 }) {
+    const transform = () =>
+        `translate(${props.camera.tx()}, ${props.camera.ty()}) scale(${props.camera.scale()})`
     return (
         <svg
             ref={props.setRef}
             class={`h-full w-full block bg-gray-100 ${props.model.activeTool() ? 'cursor-crosshair' : ''}`}
         >
-            <GridBackground />
-
-            <For each={props.model.widgets}>
-                {(w) => (
-                    <WidgetView w={w} mode={props.model.mode} onDragStart={props.onDragStart} />
-                )}
-            </For>
-
-            <DrawPreview rect={props.model.previewRect} />
-            <SelectionOverlay bounds={props.model.selectedWidgetBounds} />
+            <g transform={transform()}>
+                <GridBackground />
+                <Widgets
+                    widgets={props.model.widgets}
+                    mode={props.model.mode}
+                    onDragStart={props.onDragStart}
+                />
+                <DrawPreview rect={props.model.previewRect} />
+                <SelectionOverlay bounds={props.model.selectedWidgetBounds} />
+            </g>
         </svg>
     )
 }
@@ -83,7 +87,7 @@ function createCanvasCoords() {
     const setRef = (svg: SVGSVGElement) => {
         el = svg
     }
-    const toLocal = (e: PointerEvent): Point | null => {
+    const toLocal = (e: { clientX: number; clientY: number }): Point | null => {
         if (!el) return null
         const ctm = el.getScreenCTM()
         if (!ctm) return null
@@ -107,14 +111,26 @@ function installGlobalKeys(model: Model) {
     onCleanup(() => window.removeEventListener('keydown', handleKey))
 }
 
+const PAN_THRESHOLD = 3
+
+type PanGesture = { startX: number; startY: number; panning: boolean }
+
 export default function App() {
     const model = createModel()
+    const camera = createCamera()
     const { setRef, toLocal, isCanvas } = createCanvasCoords()
     installGlobalKeys(model)
 
+    let pan: PanGesture | null = null
+
+    const toWorld = (e: { clientX: number; clientY: number }): Point | null => {
+        const p = toLocal(e)
+        return p ? camera.screenToWorld(p) : null
+    }
+
     const onDragStart = (id: WidgetId, e: PointerEvent) => {
         if (model.mode().tag !== 'idle') return
-        const p = toLocal(e)
+        const p = toWorld(e)
         if (!p) return
         e.stopPropagation()
         model.widgetPointerDown(id, p)
@@ -123,19 +139,60 @@ export default function App() {
     return (
         <main
             class='relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none'
+            style={{ 'touch-action': 'none' }}
             onPointerDown={(e) => {
                 if (!isCanvas(e.target)) return
-                const p = toLocal(e)
+                if (model.mode().tag === 'idle') {
+                    pan = { startX: e.clientX, startY: e.clientY, panning: false }
+                    return
+                }
+                const p = toWorld(e)
                 if (p) model.canvasPointerDown(p)
             }}
             onPointerMove={(e) => {
-                const p = toLocal(e)
+                if (pan) {
+                    if (!(e.buttons & 1)) {
+                        pan = null
+                        return
+                    }
+                    if (!pan.panning) {
+                        const dx = e.clientX - pan.startX
+                        const dy = e.clientY - pan.startY
+                        if (Math.hypot(dx, dy) > PAN_THRESHOLD) pan.panning = true
+                    }
+                    if (pan.panning) camera.panBy(e.movementX, e.movementY)
+                    return
+                }
+                const p = toWorld(e)
                 if (p) model.pointerMove(p)
             }}
-            onPointerUp={() => model.pointerUp()}
+            onPointerUp={(e) => {
+                if (pan) {
+                    if (!pan.panning) {
+                        const p = toWorld(e)
+                        if (p) model.canvasPointerDown(p)
+                    }
+                    pan = null
+                    return
+                }
+                model.pointerUp()
+            }}
+            onWheel={(e) => {
+                if (e.ctrlKey || e.metaKey) e.preventDefault()
+                if (!isCanvas(e.target)) return
+                const p = toLocal(e)
+                if (!p) return
+                if (e.ctrlKey || e.metaKey) {
+                    const factor = Math.exp(-e.deltaY * 0.01)
+                    camera.zoomAt(p, factor)
+                } else {
+                    e.preventDefault()
+                    camera.panBy(-e.deltaX, -e.deltaY)
+                }
+            }}
         >
             <Toolbar model={model} />
-            <Canvas model={model} setRef={setRef} onDragStart={onDragStart} />
+            <Canvas model={model} camera={camera} setRef={setRef} onDragStart={onDragStart} />
         </main>
     )
 }
