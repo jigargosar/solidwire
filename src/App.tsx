@@ -20,9 +20,9 @@ const generator = rough.generator()
 const strokeColor = '#374151'
 const fontFamily = "'Kalam', cursive"
 
-const toPath = (d: Drawable) =>
+const toPath = (drawable: Drawable) =>
     generator
-        .toPaths(d)
+        .toPaths(drawable)
         .map((p) => p.d)
         .join(' ')
 
@@ -68,7 +68,7 @@ function RoughBox(
         children?: JSX.Element
     },
 ) {
-    const d = createMemo(() => roughRect(props.w.w, props.w.h))
+    const path = createMemo(() => roughRect(props.w.w, props.w.h))
     return (
         <DraggableGroup
             id={props.w.id}
@@ -78,7 +78,7 @@ function RoughBox(
             onDragStart={props.onDragStart}
         >
             <rect width={props.w.w} height={props.w.h} fill='transparent' />
-            <path d={d()} pointer-events='none' {...props.pathProps} />
+            <path d={path()} pointer-events='none' {...props.pathProps} />
             {props.children}
         </DraggableGroup>
     )
@@ -334,30 +334,28 @@ function Canvas(props: {
     setRef: (el: SVGSVGElement) => void
     toLocal: (e: PointerEvent) => Point | null
 }) {
-    const model = props.model
-
     const onDragStart = (id: WidgetId, e: PointerEvent) => {
-        if (model.mode().tag !== 'idle') return
+        if (props.model.mode().tag !== 'idle') return
         const p = props.toLocal(e)
         if (!p) return
         e.stopPropagation()
-        model.widgetPointerDown(id, p)
+        props.model.widgetPointerDown(id, p)
     }
 
-    const wp = { mode: model.mode, onDragStart }
+    const wp = { mode: props.model.mode, onDragStart }
 
     return (
         <svg
             ref={props.setRef}
-            class={`h-full w-full block bg-gray-100 ${model.activeTool() ? 'cursor-crosshair' : ''}`}
+            class={`h-full w-full block bg-gray-100 ${props.model.activeTool() ? 'cursor-crosshair' : ''}`}
             onPointerDown={(e) => {
                 const p = props.toLocal(e)
-                if (p) model.canvasPointerDown(p)
+                if (p) props.model.canvasPointerDown(p)
             }}
         >
             <GridBackground />
 
-            <For each={model.widgets}>
+            <For each={props.model.widgets}>
                 {(w) => {
                     switch (w.tag) {
                         case 'rect':
@@ -374,8 +372,8 @@ function Canvas(props: {
                 }}
             </For>
 
-            <DrawPreview rect={model.previewRect} />
-            <SelectionOverlay bounds={model.selectedWidgetBounds} />
+            <DrawPreview rect={props.model.previewRect} />
+            <SelectionOverlay bounds={props.model.selectedWidgetBounds} />
         </svg>
     )
 }
