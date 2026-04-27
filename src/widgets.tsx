@@ -1,11 +1,5 @@
 import { createMemo, For, type Accessor, type JSX } from 'solid-js'
-import {
-    assertNever,
-    widgetBounds,
-    type Mode,
-    type Widget,
-    type WidgetId,
-} from './model'
+import { assertNever, widgetBounds, type Mode, type Widget } from './model'
 import type { Bounds } from './geom'
 import { fontFamily, roughRect, strokeColor } from './rough'
 
@@ -18,23 +12,19 @@ type BoxW = RectW | ButtonW | AnnotationW
 type WidgetProps<T> = {
     w: T
     mode: Accessor<Mode>
-    onDragStart: (id: WidgetId, e: PointerEvent) => void
 }
 
 function WidgetFrame(props: {
-    id: WidgetId
     x: number
     y: number
     hit: Bounds
     mode: Accessor<Mode>
-    onDragStart: (id: WidgetId, e: PointerEvent) => void
     children: JSX.Element
 }) {
     return (
         <g
             transform={`translate(${props.x}, ${props.y})`}
             class={props.mode().tag === 'idle' ? 'cursor-move' : ''}
-            onPointerDown={(e) => props.onDragStart(props.id, e)}
         >
             <rect
                 x={props.hit.x}
@@ -42,6 +32,7 @@ function WidgetFrame(props: {
                 width={props.hit.w}
                 height={props.hit.h}
                 fill='transparent'
+                pointer-events='none'
             />
             {props.children}
         </g>
@@ -57,14 +48,7 @@ function RoughBox(
     const path = createMemo(() => roughRect(props.w.w, props.w.h))
     const hit = createMemo(() => ({ x: 0, y: 0, w: props.w.w, h: props.w.h }))
     return (
-        <WidgetFrame
-            id={props.w.id}
-            x={props.w.x}
-            y={props.w.y}
-            hit={hit()}
-            mode={props.mode}
-            onDragStart={props.onDragStart}
-        >
+        <WidgetFrame x={props.w.x} y={props.w.y} hit={hit()} mode={props.mode}>
             <path d={path()} pointer-events='none' {...props.pathProps} />
             {props.children}
         </WidgetFrame>
@@ -143,14 +127,7 @@ function TextWidget(props: WidgetProps<TextW>) {
         return { x: b.x - props.w.x, y: b.y - props.w.y, w: b.w, h: b.h }
     })
     return (
-        <WidgetFrame
-            id={props.w.id}
-            x={props.w.x}
-            y={props.w.y}
-            hit={hit()}
-            mode={props.mode}
-            onDragStart={props.onDragStart}
-        >
+        <WidgetFrame x={props.w.x} y={props.w.y} hit={hit()} mode={props.mode}>
             <text
                 style={{ 'font-family': fontFamily }}
                 class='select-none text-2xl fill-gray-800 font-bold'
@@ -177,14 +154,10 @@ function WidgetView(props: WidgetProps<Widget>) {
     }
 }
 
-export function Widgets(props: {
-    widgets: Widget[]
-    mode: Accessor<Mode>
-    onDragStart: (id: WidgetId, e: PointerEvent) => void
-}) {
+export function Widgets(props: { widgets: Widget[]; mode: Accessor<Mode> }) {
     return (
         <For each={props.widgets}>
-            {(w) => <WidgetView w={w} mode={props.mode} onDragStart={props.onDragStart} />}
+            {(w) => <WidgetView w={w} mode={props.mode} />}
         </For>
     )
 }

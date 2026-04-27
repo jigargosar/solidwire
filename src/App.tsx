@@ -1,14 +1,13 @@
 import { Show, createSignal, type Accessor } from 'solid-js'
-import { createModel, type Model, type WidgetId } from './model'
+import { createModel, type Model } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
-import { createCamera, type Camera } from './camera'
 import {
     createElementSize,
+    createHotkeys,
     createPointerInteraction,
-    createWindowListener,
 } from './primitives'
 
 function GridBackground() {
@@ -60,14 +59,9 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
     )
 }
 
-function Canvas(props: {
-    model: Model
-    camera: Camera
-    setRef: (el: SVGSVGElement) => void
-    onDragStart: (id: WidgetId, e: PointerEvent) => void
-}) {
+function Canvas(props: { model: Model; setRef: (el: SVGSVGElement) => void }) {
     const transform = () =>
-        `translate(${props.camera.tx()}, ${props.camera.ty()}) scale(${props.camera.scale()})`
+        `translate(${props.model.camera.tx()}, ${props.model.camera.ty()}) scale(${props.model.camera.scale()})`
     return (
         <svg
             ref={props.setRef}
@@ -75,11 +69,7 @@ function Canvas(props: {
         >
             <g transform={transform()}>
                 <GridBackground />
-                <Widgets
-                    widgets={props.model.widgets}
-                    mode={props.model.mode}
-                    onDragStart={props.onDragStart}
-                />
+                <Widgets widgets={props.model.widgets} mode={props.model.mode} />
                 <DrawPreview rect={props.model.previewRect} />
                 <SelectionOverlay bounds={props.model.selectedWidgetBounds} />
             </g>
@@ -111,13 +101,14 @@ const PAN_THRESHOLD = 3
 const TOOLBAR_W = 140
 const FIT_PAD = 24
 
+const noMod = (e: KeyboardEvent) => !(e.metaKey || e.ctrlKey || e.altKey)
+
 export default function App() {
-    const model = createModel()
     const { el, setRef, toLocal, isCanvas } = createCanvasCoords()
     const canvasSize = createElementSize(el)
     const [mainEl, setMainEl] = createSignal<HTMLElement | null>(null)
 
-    const getScreenBounds = (): Bounds | null => {
+    const screenBounds = (): Bounds | null => {
         const s = canvasSize()
         if (!s) return null
         return {
@@ -128,67 +119,50 @@ export default function App() {
         }
     }
 
-    const camera = createCamera({
-        worldBounds: model.worldBounds,
-        screenBounds: getScreenBounds,
-    })
+    const model = createModel({ screenBounds })
 
-    createWindowListener('keydown', (e) => {
-        const modified = e.metaKey || e.ctrlKey || e.altKey
-        if (e.key === 'Escape') model.cancel()
-        if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) model.deleteSelected()
-        if (e.key === 'r' && !modified) camera.reset()
-        if (e.key === 'f' && !modified) camera.fit()
+    createHotkeys({
+        Escape: () => model.cancel(),
+        Delete: (e) => {
+            if (noMod(e)) model.deleteSelected()
+        },
+        Backspace: (e) => {
+            if (noMod(e)) model.deleteSelected()
+        },
+        r: (e) => {
+            if (noMod(e)) model.camera.reset()
+        },
+        f: (e) => {
+            if (noMod(e)) model.camera.fit()
+        },
     })
-
-    const toWorld = (e: { clientX: number; clientY: number }): Point | null => {
-        const p = toLocal(e)
-        return p ? camera.screenToWorld(p) : null
-    }
 
     createPointerInteraction({
         target: mainEl,
         threshold: PAN_THRESHOLD,
         onPointerDown: (e) => {
             if (!isCanvas(e.target)) return
-            if (model.mode().tag === 'idle') return
-            const p = toWorld(e)
+            const p = toLocal(e)
             if (p) model.canvasPointerDown(p)
         },
         onPointerMove: (e, info) => {
             if (!isCanvas(info.startTarget)) return
-            const m = model.mode()
-            if (m.tag === 'drawing' || m.tag === 'dragging') {
-                const p = toWorld(e)
-                if (p) model.pointerMove(p)
-            } else if (info.dragging && m.tag === 'idle') {
-                camera.panBy(info.dx, info.dy)
-            }
+            const p = toLocal(e)
+            if (p) model.canvasPointerMove(p, info)
         },
         onPointerUp: (e, info) => {
             if (!isCanvas(info.startTarget)) return
-            if (!info.wasDragging && model.mode().tag === 'idle') {
-                const p = toWorld(e)
-                if (p) model.canvasPointerDown(p)
-            }
-            model.pointerUp()
+            const p = toLocal(e)
+            if (p) model.canvasPointerUp(p, info)
         },
         onWheel: (e) => {
             if (e.ctrlKey || e.metaKey) e.preventDefault()
             if (!isCanvas(e.target)) return
             e.preventDefault()
             const p = toLocal(e)
-            if (p) camera.zoomByDelta(p, e.deltaY)
+            if (p) model.camera.zoomByDelta(p, e.deltaY)
         },
     })
-
-    const onDragStart = (id: WidgetId, e: PointerEvent) => {
-        if (model.mode().tag !== 'idle') return
-        const p = toWorld(e)
-        if (!p) return
-        e.stopPropagation()
-        model.widgetPointerDown(id, p)
-    }
 
     return (
         <main
@@ -197,9 +171,9 @@ export default function App() {
             style={{ 'touch-action': 'none' }}
         >
             <Toolbar model={model} />
-            <Canvas model={model} camera={camera} setRef={setRef} onDragStart={onDragStart} />
+            <Canvas model={model} setRef={setRef} />
             <div class='absolute top-3 right-3 z-10 rounded-md border border-gray-400 bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 shadow-sm pointer-events-none'>
-                {Math.round(camera.scale() * 100)}%
+                {Math.round(model.camera.scale() * 100)}%
             </div>
         </main>
     )

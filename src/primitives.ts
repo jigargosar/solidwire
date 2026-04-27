@@ -1,4 +1,11 @@
-import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js'
+import {
+    createEffect,
+    createMemo,
+    createSignal,
+    onCleanup,
+    type Accessor,
+} from 'solid-js'
+import type { Bounds } from './geom'
 
 export function createWindowListener<K extends keyof WindowEventMap>(
     type: K,
@@ -178,64 +185,73 @@ export function createPointerInteraction(
     return { dragging }
 }
 
-// --- BELOW: pending design review. Uncomment one at a time as approved. ---
+export type HotkeyMap = Record<string, (e: KeyboardEvent) => void>
 
-// import { createMemo } from 'solid-js'
-// import type { Bounds } from './geom'
+export function createHotkeys(map: HotkeyMap) {
+    createWindowListener('keydown', (e) => {
+        const t = e.target
+        if (t instanceof HTMLElement) {
+            if (
+                t.tagName === 'INPUT' ||
+                t.tagName === 'TEXTAREA' ||
+                t.isContentEditable
+            )
+                return
+        }
+        const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+        const handler = map[key]
+        if (handler) handler(e)
+    })
+}
 
-// export type HotkeyMap = Record<string, () => void>
-//
-// export function createHotkeys(map: HotkeyMap, opts?: { allowModifiers?: boolean }) {
-//     createWindowListener('keydown', (e) => {
-//         if (!opts?.allowModifiers && (e.metaKey || e.ctrlKey || e.altKey)) return
-//         const handler = map[e.key]
-//         if (handler) handler()
-//     })
-// }
+export type Selection<T, Id = string> = {
+    selectedId: Accessor<Id | null>
+    setSelectedId: (id: Id | null) => void
+    selected: Accessor<T | null>
+    clear: () => void
+}
 
-// export type Selection<T> = {
-//     selectedId: Accessor<string | null>
-//     setSelectedId: (id: string | null) => void
-//     selected: Accessor<T | null>
-//     clear: () => void
-// }
-//
-// export function createSelection<T>(
-//     items: () => readonly T[],
-//     getId: (item: T) => string,
-// ): Selection<T> {
-//     const [selectedId, setSelectedId] = createSignal<string | null>(null)
-//     const selected = createMemo<T | null>(() => {
-//         const id = selectedId()
-//         if (!id) return null
-//         return items().find((x) => getId(x) === id) ?? null
-//     })
-//     return {
-//         selectedId,
-//         setSelectedId,
-//         selected,
-//         clear: () => setSelectedId(null),
-//     }
-// }
+// Stale-id behavior: if the selected item is removed from `items`, `selected()`
+// returns null while `selectedId()` retains the dead id until cleared.
+export function createSelection<T, Id = string>(
+    items: () => readonly T[],
+    getId: (item: T) => Id,
+): Selection<T, Id> {
+    const [selectedId, setSelectedId] = createSignal<Id | null>(null) as [
+        Accessor<Id | null>,
+        (id: Id | null) => void,
+    ]
+    const selected = createMemo<T | null>(() => {
+        const id = selectedId()
+        if (id === null) return null
+        return items().find((x) => getId(x) === id) ?? null
+    })
+    return {
+        selectedId,
+        setSelectedId,
+        selected,
+        clear: () => setSelectedId(null),
+    }
+}
 
-// export function createBoundsAggregate<T>(
-//     items: () => readonly T[],
-//     getBounds: (item: T) => Bounds,
-// ): Accessor<Bounds | null> {
-//     return createMemo(() => {
-//         const list = items()
-//         if (list.length === 0) return null
-//         let minX = Infinity
-//         let minY = Infinity
-//         let maxX = -Infinity
-//         let maxY = -Infinity
-//         for (const it of list) {
-//             const b = getBounds(it)
-//             if (b.x < minX) minX = b.x
-//             if (b.y < minY) minY = b.y
-//             if (b.x + b.w > maxX) maxX = b.x + b.w
-//             if (b.y + b.h > maxY) maxY = b.y + b.h
-//         }
-//         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
-//     })
-// }
+export function createBoundsAggregate<T>(
+    items: () => readonly T[],
+    getBounds: (item: T) => Bounds,
+): Accessor<Bounds | null> {
+    return createMemo(() => {
+        const list = items()
+        if (list.length === 0) return null
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const it of list) {
+            const b = getBounds(it)
+            if (b.x < minX) minX = b.x
+            if (b.y < minY) minY = b.y
+            if (b.x + b.w > maxX) maxX = b.x + b.w
+            if (b.y + b.h > maxY) maxY = b.y + b.h
+        }
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+    })
+}
