@@ -136,7 +136,7 @@ export default function App() {
 
     const model = createModel({ screenBounds: getScreenBounds })
 
-    installGlobalKeys(model.keyDown)
+    installGlobalKeys(model.onKeyDown)
 
     let pan: PanGesture | null = null
 
@@ -150,7 +150,7 @@ export default function App() {
         const p = toWorld(e)
         if (!p) return
         e.stopPropagation()
-        model.widgetPointerDown(id, p)
+        model.OnWidgetPointerDown(id, p)
     }
 
     return (
@@ -164,7 +164,7 @@ export default function App() {
                     return
                 }
                 const p = toWorld(e)
-                if (p) model.canvasPointerDown(p)
+                if (p) model.onCanvasPointerDown(p)
             }}
             onPointerMove={(e) => {
                 if (pan) {
@@ -181,18 +181,18 @@ export default function App() {
                     return
                 }
                 const p = toWorld(e)
-                if (p) model.pointerMove(p)
+                if (p) model.onPointerMove(p)
             }}
             onPointerUp={(e) => {
                 if (pan) {
                     if (!pan.panning) {
                         const p = toWorld(e)
-                        if (p) model.canvasPointerDown(p)
+                        if (p) model.onCanvasPointerDown(p)
                     }
                     pan = null
                     return
                 }
-                model.pointerUp()
+                model.OnPointerUp()
             }}
             onWheel={(e) => {
                 if (e.ctrlKey || e.metaKey) e.preventDefault()

@@ -34,11 +34,11 @@ export interface Model {
     previewRect: Accessor<Bounds | null>
     activeTool: () => Tool | null
     toggleTool: (tool: Tool) => void
-    canvasPointerDown: (p: Point) => void
-    widgetPointerDown: (id: WidgetId, cursor: Point) => void
-    pointerMove: (p: Point) => void
-    pointerUp: () => void
-    keyDown: (k: KeyInput) => void
+    onCanvasPointerDown: (p: Point) => void
+    OnWidgetPointerDown: (id: WidgetId, cursor: Point) => void
+    onPointerMove: (p: Point) => void
+    OnPointerUp: () => void
+    onKeyDown: (k: KeyInput) => void
 }
 
 export function createModel(opts: ModelOpts): Model {
@@ -119,7 +119,7 @@ export function createModel(opts: ModelOpts): Model {
         setSelectedId(null)
     }
 
-    const keyDown = (k: KeyInput) => {
+    const onKeyDown = (k: KeyInput) => {
         const modified = k.meta || k.ctrl || k.alt
         if (k.key === 'Escape') cancel()
         if ((k.key === 'Delete' || k.key === 'Backspace') && !modified) deleteSelected()
@@ -127,7 +127,7 @@ export function createModel(opts: ModelOpts): Model {
         if (k.key === 'f' && !modified) camera.fit()
     }
 
-    const canvasPointerDown = (p: Point) => {
+    const onCanvasPointerDown = (p: Point) => {
         const m = mode()
         if (m.tag !== 'armed') {
             if (m.tag === 'idle') setSelectedId(null)
@@ -157,7 +157,7 @@ export function createModel(opts: ModelOpts): Model {
         }
     }
 
-    const widgetPointerDown = (id: WidgetId, cursor: Point) => {
+    const OnWidgetPointerDown = (id: WidgetId, cursor: Point) => {
         if (mode().tag !== 'idle') return
         const widget = widgets.find((w) => w.id === id)
         if (!widget) return
@@ -165,7 +165,7 @@ export function createModel(opts: ModelOpts): Model {
         setMode({ tag: 'dragging', id, offset: { x: cursor.x - widget.x, y: cursor.y - widget.y } })
     }
 
-    const pointerMove = (p: Point) => {
+    const onPointerMove = (p: Point) => {
         const m = mode()
         switch (m.tag) {
             case 'dragging':
@@ -182,7 +182,7 @@ export function createModel(opts: ModelOpts): Model {
         }
     }
 
-    const pointerUp = () => {
+    const OnPointerUp = () => {
         const m = mode()
         switch (m.tag) {
             case 'drawing': {
@@ -230,10 +230,10 @@ export function createModel(opts: ModelOpts): Model {
         previewRect,
         activeTool,
         toggleTool,
-        canvasPointerDown,
-        widgetPointerDown,
-        pointerMove,
-        pointerUp,
-        keyDown,
+        onCanvasPointerDown,
+        OnWidgetPointerDown,
+        onPointerMove,
+        OnPointerUp,
+        onKeyDown,
     }
 }
