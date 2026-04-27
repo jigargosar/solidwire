@@ -1,8 +1,8 @@
 import { onCleanup, Show, type Accessor } from 'solid-js'
-import { createModel, type Model, type WidgetId } from './model'
+import { createModel, type Model } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
-import { Widgets } from './widgets'
+import { Widgets, type WidgetId } from './widgets'
 import { Toolbar } from './toolbar'
 import { createCamera, type Camera } from './camera'
 
@@ -72,7 +72,7 @@ function Canvas(props: {
                 <GridBackground />
                 <Widgets
                     widgets={props.model.widgets}
-                    mode={props.model.mode}
+                    cursor={() => (props.model.mode().tag === 'idle' ? 'cursor-move' : '')}
                     onDragStart={props.onDragStart}
                 />
                 <DrawPreview rect={props.model.previewRect} />

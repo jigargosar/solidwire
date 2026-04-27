@@ -1,19 +1,8 @@
 import { createMemo, createSignal, type Accessor } from 'solid-js'
 import { createStore, type Store } from 'solid-js/store'
 import { boundsFromPoints, type Bounds, type Point } from './geom'
-
-export function assertNever(_: never): never {
-    throw new Error('unreachable')
-}
-
-// --- TYPES ---
-export type WidgetId = string
-
-export type Widget =
-    | { tag: 'rect'; id: WidgetId; x: number; y: number; w: number; h: number }
-    | { tag: 'button'; id: WidgetId; x: number; y: number; w: number; h: number }
-    | { tag: 'text'; id: WidgetId; x: number; y: number; content: string }
-    | { tag: 'annotation'; id: WidgetId; x: number; y: number; w: number; h: number; text: string }
+import { assertNever } from './util'
+import { widgetBounds, type Widget, type WidgetId } from './widgets'
 
 export type Tool = 'rect' | 'button' | 'text' | 'annotation'
 type DrawKind = 'rect' | 'annotation'
@@ -23,19 +12,6 @@ export type Mode =
     | { tag: 'armed'; tool: Tool }
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point }
-
-export function widgetBounds(w: Widget): Bounds {
-    switch (w.tag) {
-        case 'rect':
-        case 'button':
-        case 'annotation':
-            return { x: w.x, y: w.y, w: w.w, h: w.h }
-        case 'text':
-            return { x: w.x - 4, y: w.y - 24, w: w.content.length * 14 + 8, h: 32 }
-        default:
-            return assertNever(w)
-    }
-}
 
 // --- MODEL ---
 export interface Model {

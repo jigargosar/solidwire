@@ -1,13 +1,28 @@
 import { createMemo, For, type Accessor, type JSX } from 'solid-js'
-import {
-    assertNever,
-    widgetBounds,
-    type Mode,
-    type Widget,
-    type WidgetId,
-} from './model'
 import type { Bounds } from './geom'
 import { fontFamily, roughRect, strokeColor } from './rough'
+import { assertNever } from './util'
+
+export type WidgetId = string
+
+export type Widget =
+    | { tag: 'rect'; id: WidgetId; x: number; y: number; w: number; h: number }
+    | { tag: 'button'; id: WidgetId; x: number; y: number; w: number; h: number }
+    | { tag: 'text'; id: WidgetId; x: number; y: number; content: string }
+    | { tag: 'annotation'; id: WidgetId; x: number; y: number; w: number; h: number; text: string }
+
+export function widgetBounds(w: Widget): Bounds {
+    switch (w.tag) {
+        case 'rect':
+        case 'button':
+        case 'annotation':
+            return { x: w.x, y: w.y, w: w.w, h: w.h }
+        case 'text':
+            return { x: w.x - 4, y: w.y - 24, w: w.content.length * 14 + 8, h: 32 }
+        default:
+            return assertNever(w)
+    }
+}
 
 type RectW = Extract<Widget, { tag: 'rect' }>
 type ButtonW = Extract<Widget, { tag: 'button' }>
@@ -17,7 +32,7 @@ type BoxW = RectW | ButtonW | AnnotationW
 
 type WidgetProps<T> = {
     w: T
-    mode: Accessor<Mode>
+    cursor: Accessor<string>
     onDragStart: (id: WidgetId, e: PointerEvent) => void
 }
 
@@ -26,14 +41,14 @@ function WidgetFrame(props: {
     x: number
     y: number
     hit: Bounds
-    mode: Accessor<Mode>
+    cursor: Accessor<string>
     onDragStart: (id: WidgetId, e: PointerEvent) => void
     children: JSX.Element
 }) {
     return (
         <g
             transform={`translate(${props.x}, ${props.y})`}
-            class={props.mode().tag === 'idle' ? 'cursor-move' : ''}
+            class={props.cursor()}
             onPointerDown={(e) => props.onDragStart(props.id, e)}
         >
             <rect
@@ -62,7 +77,7 @@ function RoughBox(
             x={props.w.x}
             y={props.w.y}
             hit={hit()}
-            mode={props.mode}
+            cursor={props.cursor}
             onDragStart={props.onDragStart}
         >
             <path d={path()} pointer-events='none' {...props.pathProps} />
@@ -148,7 +163,7 @@ function TextWidget(props: WidgetProps<TextW>) {
             x={props.w.x}
             y={props.w.y}
             hit={hit()}
-            mode={props.mode}
+            cursor={props.cursor}
             onDragStart={props.onDragStart}
         >
             <text
@@ -179,12 +194,12 @@ function WidgetView(props: WidgetProps<Widget>) {
 
 export function Widgets(props: {
     widgets: Widget[]
-    mode: Accessor<Mode>
+    cursor: Accessor<string>
     onDragStart: (id: WidgetId, e: PointerEvent) => void
 }) {
     return (
         <For each={props.widgets}>
-            {(w) => <WidgetView w={w} mode={props.mode} onDragStart={props.onDragStart} />}
+            {(w) => <WidgetView w={w} cursor={props.cursor} onDragStart={props.onDragStart} />}
         </For>
     )
 }
