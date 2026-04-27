@@ -35,64 +35,112 @@ export function createElementSize<T extends Element>(
     return size
 }
 
-// --- BELOW: pending design review (Items 2–14). Uncomment one at a time as approved. ---
+export type DragGestureOpts = {
+    threshold: number
+    button?: number
+    onDrag: (dx: number, dy: number) => void
+    onTap?: (e: PointerEvent) => void
+}
+
+export type DragGesture = {
+    start: (e: PointerEvent) => void
+    active: Accessor<boolean>
+    dragging: Accessor<boolean>
+}
+
+const buttonToButtonsMask = (button: number): number => {
+    switch (button) {
+        case 0:
+            return 1
+        case 1:
+            return 4
+        case 2:
+            return 2
+        case 3:
+            return 8
+        case 4:
+            return 16
+        default:
+            return 0
+    }
+}
+
+export function createDragGesture(opts: DragGestureOpts): DragGesture {
+    const button = opts.button ?? 0
+    const mask = buttonToButtonsMask(button)
+    let origin: { x: number; y: number } | null = null
+    let last: { x: number; y: number } | null = null
+    let detach: (() => void) | null = null
+    const [dragging, setDragging] = createSignal(false)
+    const [active, setActive] = createSignal(false)
+
+    const reset = () => {
+        origin = null
+        last = null
+        setActive(false)
+        setDragging(false)
+        if (detach) {
+            detach()
+            detach = null
+        }
+    }
+
+    const onMove = (e: PointerEvent) => {
+        if (!origin || !last) return
+        if (!(e.buttons & mask)) {
+            reset()
+            return
+        }
+        if (!dragging()) {
+            const dx = e.clientX - origin.x
+            const dy = e.clientY - origin.y
+            if (Math.hypot(dx, dy) > opts.threshold) setDragging(true)
+        }
+        if (dragging()) {
+            opts.onDrag(e.clientX - last.x, e.clientY - last.y)
+        }
+        last = { x: e.clientX, y: e.clientY }
+    }
+
+    const onUp = (e: PointerEvent) => {
+        if (e.button !== button) return
+        const wasDragging = dragging()
+        reset()
+        if (!wasDragging && opts.onTap) opts.onTap(e)
+    }
+
+    const onCancel = () => {
+        reset()
+    }
+
+    const start = (e: PointerEvent) => {
+        if (origin) return
+        if (e.button !== button) return
+        origin = { x: e.clientX, y: e.clientY }
+        last = { x: e.clientX, y: e.clientY }
+        setActive(true)
+        setDragging(false)
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onCancel)
+        detach = () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            window.removeEventListener('pointercancel', onCancel)
+        }
+    }
+
+    onCleanup(() => {
+        if (detach) detach()
+    })
+
+    return { start, active, dragging }
+}
+
+// --- BELOW: pending design review. Uncomment one at a time as approved. ---
 
 // import { createMemo } from 'solid-js'
 // import type { Bounds } from './geom'
-
-// export type PanGestureOpts = {
-//     threshold: number
-//     onPan: (dx: number, dy: number) => void
-//     onTap?: (e: PointerEvent) => void
-// }
-//
-// export type PanGesture = {
-//     start: (e: PointerEvent) => void
-//     move: (e: PointerEvent) => void
-//     end: (e: PointerEvent) => void
-//     active: Accessor<boolean>
-//     panning: Accessor<boolean>
-// }
-//
-// export function createPanGesture(opts: PanGestureOpts): PanGesture {
-//     let origin: { x: number; y: number } | null = null
-//     const [panning, setPanning] = createSignal(false)
-//     const [active, setActive] = createSignal(false)
-//
-//     const reset = () => {
-//         origin = null
-//         setActive(false)
-//         setPanning(false)
-//     }
-//
-//     const start = (e: PointerEvent) => {
-//         origin = { x: e.clientX, y: e.clientY }
-//         setActive(true)
-//         setPanning(false)
-//     }
-//
-//     const move = (e: PointerEvent) => {
-//         if (!origin) return
-//         if (!(e.buttons & 1)) {
-//             reset()
-//             return
-//         }
-//         if (!panning()) {
-//             const dx = e.clientX - origin.x
-//             const dy = e.clientY - origin.y
-//             if (Math.hypot(dx, dy) > opts.threshold) setPanning(true)
-//         }
-//         if (panning()) opts.onPan(e.movementX, e.movementY)
-//     }
-//
-//     const end = (e: PointerEvent) => {
-//         const wasPanning = panning()
-//         reset()
-//         if (!wasPanning && opts.onTap) opts.onTap(e)
-//     }
-//
-//     return { start, move, end, active, panning }
-// }
 
 // export type HotkeyMap = Record<string, () => void>
 //

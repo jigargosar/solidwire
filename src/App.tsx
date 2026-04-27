@@ -5,7 +5,11 @@ import { roughRect, strokeColor } from './rough'
 import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
 import { createCamera, type Camera } from './camera'
-import { createElementSize, createWindowListener } from './primitives'
+import {
+    createDragGesture,
+    createElementSize,
+    createWindowListener,
+} from './primitives'
 
 function GridBackground() {
     return (
@@ -104,9 +108,6 @@ function createCanvasCoords() {
 }
 
 const PAN_THRESHOLD = 3
-
-type PanGesture = { startX: number; startY: number; panning: boolean }
-
 const TOOLBAR_W = 140
 const FIT_PAD = 24
 
@@ -139,12 +140,19 @@ export default function App() {
         if (e.key === 'f' && !modified) camera.fit()
     })
 
-    let pan: PanGesture | null = null
-
     const toWorld = (e: { clientX: number; clientY: number }): Point | null => {
         const p = toLocal(e)
         return p ? camera.screenToWorld(p) : null
     }
+
+    const drag = createDragGesture({
+        threshold: PAN_THRESHOLD,
+        onDrag: (dx, dy) => camera.panBy(dx, dy),
+        onTap: (e) => {
+            const p = toWorld(e)
+            if (p) model.canvasPointerDown(p)
+        },
+    })
 
     const onDragStart = (id: WidgetId, e: PointerEvent) => {
         if (model.mode().tag !== 'idle') return
@@ -161,38 +169,19 @@ export default function App() {
             onPointerDown={(e) => {
                 if (!isCanvas(e.target)) return
                 if (model.mode().tag === 'idle') {
-                    pan = { startX: e.clientX, startY: e.clientY, panning: false }
+                    drag.start(e)
                     return
                 }
                 const p = toWorld(e)
                 if (p) model.canvasPointerDown(p)
             }}
             onPointerMove={(e) => {
-                if (pan) {
-                    if (!(e.buttons & 1)) {
-                        pan = null
-                        return
-                    }
-                    if (!pan.panning) {
-                        const dx = e.clientX - pan.startX
-                        const dy = e.clientY - pan.startY
-                        if (Math.hypot(dx, dy) > PAN_THRESHOLD) pan.panning = true
-                    }
-                    if (pan.panning) camera.panBy(e.movementX, e.movementY)
-                    return
-                }
+                if (drag.active()) return
                 const p = toWorld(e)
                 if (p) model.pointerMove(p)
             }}
-            onPointerUp={(e) => {
-                if (pan) {
-                    if (!pan.panning) {
-                        const p = toWorld(e)
-                        if (p) model.canvasPointerDown(p)
-                    }
-                    pan = null
-                    return
-                }
+            onPointerUp={() => {
+                if (drag.active()) return
                 model.pointerUp()
             }}
             onWheel={(e) => {
