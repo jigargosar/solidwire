@@ -6,8 +6,8 @@ import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
 import { createCamera, type Camera } from './camera'
 import {
-    createDragGesture,
     createElementSize,
+    createPointerInteraction,
     createWindowListener,
 } from './primitives'
 
@@ -115,6 +115,7 @@ export default function App() {
     const model = createModel()
     const { el, setRef, toLocal, isCanvas } = createCanvasCoords()
     const canvasSize = createElementSize(el)
+    const [mainEl, setMainEl] = createSignal<HTMLElement | null>(null)
 
     const getScreenBounds = (): Bounds | null => {
         const s = canvasSize()
@@ -145,12 +146,39 @@ export default function App() {
         return p ? camera.screenToWorld(p) : null
     }
 
-    const drag = createDragGesture({
+    createPointerInteraction({
+        target: mainEl,
         threshold: PAN_THRESHOLD,
-        onDrag: (dx, dy) => camera.panBy(dx, dy),
-        onTap: (e) => {
+        onPointerDown: (e) => {
+            if (!isCanvas(e.target)) return
+            if (model.mode().tag === 'idle') return
             const p = toWorld(e)
             if (p) model.canvasPointerDown(p)
+        },
+        onPointerMove: (e, info) => {
+            if (!isCanvas(info.startTarget)) return
+            const m = model.mode()
+            if (m.tag === 'drawing' || m.tag === 'dragging') {
+                const p = toWorld(e)
+                if (p) model.pointerMove(p)
+            } else if (info.dragging && m.tag === 'idle') {
+                camera.panBy(info.dx, info.dy)
+            }
+        },
+        onPointerUp: (e, info) => {
+            if (!isCanvas(info.startTarget)) return
+            if (!info.wasDragging && model.mode().tag === 'idle') {
+                const p = toWorld(e)
+                if (p) model.canvasPointerDown(p)
+            }
+            model.pointerUp()
+        },
+        onWheel: (e) => {
+            if (e.ctrlKey || e.metaKey) e.preventDefault()
+            if (!isCanvas(e.target)) return
+            e.preventDefault()
+            const p = toLocal(e)
+            if (p) camera.zoomByDelta(p, e.deltaY)
         },
     })
 
@@ -164,33 +192,9 @@ export default function App() {
 
     return (
         <main
+            ref={setMainEl}
             class='relative h-screen w-screen overflow-hidden bg-gray-200 font-sans text-gray-900 select-none'
             style={{ 'touch-action': 'none' }}
-            onPointerDown={(e) => {
-                if (!isCanvas(e.target)) return
-                if (model.mode().tag === 'idle') {
-                    drag.start(e)
-                    return
-                }
-                const p = toWorld(e)
-                if (p) model.canvasPointerDown(p)
-            }}
-            onPointerMove={(e) => {
-                if (drag.active()) return
-                const p = toWorld(e)
-                if (p) model.pointerMove(p)
-            }}
-            onPointerUp={() => {
-                if (drag.active()) return
-                model.pointerUp()
-            }}
-            onWheel={(e) => {
-                if (e.ctrlKey || e.metaKey) e.preventDefault()
-                if (!isCanvas(e.target)) return
-                e.preventDefault()
-                const p = toLocal(e)
-                if (p) camera.zoomByDelta(p, e.deltaY)
-            }}
         >
             <Toolbar model={model} />
             <Canvas model={model} camera={camera} setRef={setRef} onDragStart={onDragStart} />

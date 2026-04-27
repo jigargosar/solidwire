@@ -35,16 +35,30 @@ export function createElementSize<T extends Element>(
     return size
 }
 
-export type DragGestureOpts = {
-    threshold: number
-    button?: number
-    onDrag: (dx: number, dy: number) => void
-    onTap?: (e: PointerEvent) => void
+export type PointerMoveInfo = {
+    dragging: boolean
+    dx: number
+    dy: number
+    startTarget: EventTarget | null
 }
 
-export type DragGesture = {
-    start: (e: PointerEvent) => void
-    active: Accessor<boolean>
+export type PointerUpInfo = {
+    wasDragging: boolean
+    startTarget: EventTarget | null
+}
+
+export type PointerInteractionOpts = {
+    target: Accessor<Element | null>
+    threshold?: number
+    button?: number
+    onPointerDown?: (e: PointerEvent) => void
+    onPointerMove?: (e: PointerEvent, info: PointerMoveInfo) => void
+    onPointerUp?: (e: PointerEvent, info: PointerUpInfo) => void
+    onPointerCancel?: (e: PointerEvent) => void
+    onWheel?: (e: WheelEvent) => void
+}
+
+export type PointerInteraction = {
     dragging: Accessor<boolean>
 }
 
@@ -65,24 +79,30 @@ const buttonToButtonsMask = (button: number): number => {
     }
 }
 
-export function createDragGesture(opts: DragGestureOpts): DragGesture {
+export function createPointerInteraction(
+    opts: PointerInteractionOpts,
+): PointerInteraction {
+    const threshold = opts.threshold ?? 3
     const button = opts.button ?? 0
     const mask = buttonToButtonsMask(button)
-    let origin: { x: number; y: number } | null = null
+
+    let origin: { x: number; y: number; target: EventTarget | null } | null =
+        null
     let last: { x: number; y: number } | null = null
-    let detach: (() => void) | null = null
     const [dragging, setDragging] = createSignal(false)
-    const [active, setActive] = createSignal(false)
 
     const reset = () => {
         origin = null
         last = null
-        setActive(false)
         setDragging(false)
-        if (detach) {
-            detach()
-            detach = null
-        }
+    }
+
+    const onDown = (e: PointerEvent) => {
+        if (e.button !== button) return
+        opts.onPointerDown?.(e)
+        if (origin) return
+        origin = { x: e.clientX, y: e.clientY, target: e.target }
+        last = { x: e.clientX, y: e.clientY }
     }
 
     const onMove = (e: PointerEvent) => {
@@ -92,49 +112,59 @@ export function createDragGesture(opts: DragGestureOpts): DragGesture {
             return
         }
         if (!dragging()) {
-            const dx = e.clientX - origin.x
-            const dy = e.clientY - origin.y
-            if (Math.hypot(dx, dy) > opts.threshold) setDragging(true)
+            const totalDx = e.clientX - origin.x
+            const totalDy = e.clientY - origin.y
+            if (Math.hypot(totalDx, totalDy) > threshold) setDragging(true)
         }
-        if (dragging()) {
-            opts.onDrag(e.clientX - last.x, e.clientY - last.y)
-        }
+        const dx = e.clientX - last.x
+        const dy = e.clientY - last.y
         last = { x: e.clientX, y: e.clientY }
+        opts.onPointerMove?.(e, {
+            dragging: dragging(),
+            dx,
+            dy,
+            startTarget: origin.target,
+        })
     }
 
     const onUp = (e: PointerEvent) => {
         if (e.button !== button) return
-        const wasDragging = dragging()
-        reset()
-        if (!wasDragging && opts.onTap) opts.onTap(e)
-    }
-
-    const onCancel = () => {
-        reset()
-    }
-
-    const start = (e: PointerEvent) => {
-        if (origin) return
-        if (e.button !== button) return
-        origin = { x: e.clientX, y: e.clientY }
-        last = { x: e.clientX, y: e.clientY }
-        setActive(true)
-        setDragging(false)
-        window.addEventListener('pointermove', onMove)
-        window.addEventListener('pointerup', onUp)
-        window.addEventListener('pointercancel', onCancel)
-        detach = () => {
-            window.removeEventListener('pointermove', onMove)
-            window.removeEventListener('pointerup', onUp)
-            window.removeEventListener('pointercancel', onCancel)
+        if (!origin) return
+        const info: PointerUpInfo = {
+            wasDragging: dragging(),
+            startTarget: origin.target,
         }
+        reset()
+        opts.onPointerUp?.(e, info)
     }
 
-    onCleanup(() => {
-        if (detach) detach()
+    const onCancel = (e: PointerEvent) => {
+        if (origin) reset()
+        opts.onPointerCancel?.(e)
+    }
+
+    const onWheel = (e: WheelEvent) => {
+        opts.onWheel?.(e)
+    }
+
+    createEffect(() => {
+        const t = opts.target()
+        if (!t) return
+        t.addEventListener('pointerdown', onDown as EventListener)
+        t.addEventListener('pointermove', onMove as EventListener)
+        t.addEventListener('pointerup', onUp as EventListener)
+        t.addEventListener('pointercancel', onCancel as EventListener)
+        t.addEventListener('wheel', onWheel as EventListener, { passive: false })
+        onCleanup(() => {
+            t.removeEventListener('pointerdown', onDown as EventListener)
+            t.removeEventListener('pointermove', onMove as EventListener)
+            t.removeEventListener('pointerup', onUp as EventListener)
+            t.removeEventListener('pointercancel', onCancel as EventListener)
+            t.removeEventListener('wheel', onWheel as EventListener)
+        })
     })
 
-    return { start, active, dragging }
+    return { dragging }
 }
 
 // --- BELOW: pending design review. Uncomment one at a time as approved. ---
