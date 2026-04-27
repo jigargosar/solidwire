@@ -1,8 +1,6 @@
 import { createMemo, createSignal, type Accessor } from 'solid-js'
 import { createStore, type Store } from 'solid-js/store'
 import { boundsFromPoints, type Bounds, type Point } from './geom'
-import { createBoundsAggregate, createSelection } from './primitives'
-import { createCamera, type Camera } from './camera'
 
 export function assertNever(_: never): never {
     throw new Error('unreachable')
@@ -39,32 +37,24 @@ export function widgetBounds(w: Widget): Bounds {
     }
 }
 
-// Pointer info passed in by the view-side gesture primitive.
-export type PointerMoveInfo = { dragging: boolean; dx: number; dy: number }
-export type PointerUpInfo = { wasDragging: boolean }
-
 // --- MODEL ---
-export interface ModelOpts {
-    screenBounds: () => Bounds | null
-}
-
 export interface Model {
     widgets: Store<Widget[]>
     mode: Accessor<Mode>
-    selectedId: Accessor<WidgetId | null>
     selectedWidgetBounds: Accessor<Bounds | null>
     previewRect: Accessor<Bounds | null>
-    camera: Camera
+    worldBounds: Accessor<Bounds | null>
     activeTool: () => Tool | null
     toggleTool: (tool: Tool) => void
     cancel: () => void
     deleteSelected: () => void
-    canvasPointerDown: (localPoint: Point) => void
-    canvasPointerMove: (localPoint: Point, info: PointerMoveInfo) => void
-    canvasPointerUp: (localPoint: Point, info: PointerUpInfo) => void
+    canvasPointerDown: (p: Point) => void
+    widgetPointerDown: (id: WidgetId, cursor: Point) => void
+    pointerMove: (p: Point) => void
+    pointerUp: () => void
 }
 
-export function createModel(opts: ModelOpts): Model {
+export function createModel(): Model {
     const newId = (): WidgetId => crypto.randomUUID()
 
     const [widgets, setWidgets] = createStore<Widget[]>([
@@ -72,18 +62,12 @@ export function createModel(opts: ModelOpts): Model {
         { tag: 'button', id: newId(), x: 600, y: 300, w: 240, h: 80 },
     ])
     const [mode, setMode] = createSignal<Mode>({ tag: 'idle' })
-
-    const worldBounds = createBoundsAggregate(() => widgets, widgetBounds)
-
-    const camera = createCamera({
-        worldBounds,
-        screenBounds: opts.screenBounds,
+    const [selectedId, setSelectedId] = createSignal<WidgetId | null>(null)
+    const selectedWidget = createMemo<Widget | null>(() => {
+        const id = selectedId()
+        if (!id) return null
+        return widgets.find((w) => w.id === id) ?? null
     })
-
-    const selection = createSelection<Widget, WidgetId>(
-        () => widgets,
-        (w) => w.id,
-    )
 
     const previewRect = createMemo<Bounds | null>(() => {
         const m = mode()
@@ -92,8 +76,24 @@ export function createModel(opts: ModelOpts): Model {
     })
 
     const selectedWidgetBounds = createMemo<Bounds | null>(() => {
-        const w = selection.selected()
+        const w = selectedWidget()
         return w ? widgetBounds(w) : null
+    })
+
+    const worldBounds = createMemo<Bounds | null>(() => {
+        if (widgets.length === 0) return null
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const w of widgets) {
+            const b = widgetBounds(w)
+            if (b.x < minX) minX = b.x
+            if (b.y < minY) minY = b.y
+            if (b.x + b.w > maxX) maxX = b.x + b.w
+            if (b.y + b.h > maxY) maxY = b.y + b.h
+        }
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
     })
 
     const activeTool = (): Tool | null => {
@@ -119,74 +119,40 @@ export function createModel(opts: ModelOpts): Model {
 
     const cancel = () => {
         setMode({ tag: 'idle' })
-        selection.clear()
+        setSelectedId(null)
     }
 
     const deleteSelected = () => {
-        const id = selection.selectedId()
+        const id = selectedId()
         if (!id) return
         if (mode().tag === 'dragging') return
         setWidgets((ws) => ws.filter((w) => w.id !== id))
-        selection.clear()
+        setSelectedId(null)
     }
 
-    const hitTest = (worldPoint: Point): Widget | null => {
-        for (let i = widgets.length - 1; i >= 0; i--) {
-            const w = widgets[i]
-            const b = widgetBounds(w)
-            if (
-                worldPoint.x >= b.x &&
-                worldPoint.x <= b.x + b.w &&
-                worldPoint.y >= b.y &&
-                worldPoint.y <= b.y + b.h
-            ) {
-                return w
-            }
-        }
-        return null
-    }
-
-    const canvasPointerDown = (localPoint: Point) => {
+    const canvasPointerDown = (p: Point) => {
         const m = mode()
-        const world = camera.screenToWorld(localPoint)
-
-        if (m.tag === 'idle') {
-            const hit = hitTest(world)
-            if (hit) {
-                selection.setSelectedId(hit.id)
-                setMode({
-                    tag: 'dragging',
-                    id: hit.id,
-                    offset: { x: world.x - hit.x, y: world.y - hit.y },
-                })
-            }
+        if (m.tag !== 'armed') {
+            if (m.tag === 'idle') setSelectedId(null)
             return
         }
-
-        if (m.tag !== 'armed') return
-
         switch (m.tool) {
             case 'rect':
-                setMode({ tag: 'drawing', kind: 'rect', start: world, current: world })
+                setMode({ tag: 'drawing', kind: 'rect', start: p, current: p })
                 return
             case 'annotation':
-                setMode({
-                    tag: 'drawing',
-                    kind: 'annotation',
-                    start: world,
-                    current: world,
-                })
+                setMode({ tag: 'drawing', kind: 'annotation', start: p, current: p })
                 return
             case 'button':
                 setWidgets((ws) => [
                     ...ws,
-                    { tag: 'button', id: newId(), x: world.x - 120, y: world.y - 40, w: 240, h: 80 },
+                    { tag: 'button', id: newId(), x: p.x - 120, y: p.y - 40, w: 240, h: 80 },
                 ])
                 return
             case 'text':
                 setWidgets((ws) => [
                     ...ws,
-                    { tag: 'text', id: newId(), x: world.x, y: world.y, content: 'Text' },
+                    { tag: 'text', id: newId(), x: p.x, y: p.y, content: 'Text' },
                 ])
                 return
             default:
@@ -194,22 +160,24 @@ export function createModel(opts: ModelOpts): Model {
         }
     }
 
-    const canvasPointerMove = (localPoint: Point, info: PointerMoveInfo) => {
+    const widgetPointerDown = (id: WidgetId, cursor: Point) => {
+        if (mode().tag !== 'idle') return
+        const widget = widgets.find((w) => w.id === id)
+        if (!widget) return
+        setSelectedId(id)
+        setMode({ tag: 'dragging', id, offset: { x: cursor.x - widget.x, y: cursor.y - widget.y } })
+    }
+
+    const pointerMove = (p: Point) => {
         const m = mode()
-        const world = camera.screenToWorld(localPoint)
         switch (m.tag) {
             case 'dragging':
-                setWidgets(
-                    (w) => w.id === m.id,
-                    { x: world.x - m.offset.x, y: world.y - m.offset.y },
-                )
+                setWidgets((w) => w.id === m.id, { x: p.x - m.offset.x, y: p.y - m.offset.y })
                 return
             case 'drawing':
-                setMode({ tag: 'drawing', kind: m.kind, start: m.start, current: world })
+                setMode({ tag: 'drawing', kind: m.kind, start: m.start, current: p })
                 return
             case 'idle':
-                if (info.dragging) camera.panBy(info.dx, info.dy)
-                return
             case 'armed':
                 return
             default:
@@ -217,7 +185,7 @@ export function createModel(opts: ModelOpts): Model {
         }
     }
 
-    const canvasPointerUp = (_localPoint: Point, info: PointerUpInfo) => {
+    const pointerUp = () => {
         const m = mode()
         switch (m.tag) {
             case 'drawing': {
@@ -250,8 +218,6 @@ export function createModel(opts: ModelOpts): Model {
                 setMode({ tag: 'idle' })
                 return
             case 'idle':
-                if (!info.wasDragging) selection.clear()
-                return
             case 'armed':
                 return
             default:
@@ -262,16 +228,16 @@ export function createModel(opts: ModelOpts): Model {
     return {
         widgets,
         mode,
-        selectedId: selection.selectedId,
         selectedWidgetBounds,
         previewRect,
-        camera,
+        worldBounds,
         activeTool,
         toggleTool,
         cancel,
         deleteSelected,
         canvasPointerDown,
-        canvasPointerMove,
-        canvasPointerUp,
+        widgetPointerDown,
+        pointerMove,
+        pointerUp,
     }
 }
