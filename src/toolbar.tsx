@@ -53,11 +53,14 @@ function ToolTile(props: {
     preview: JSX.Element
 }) {
     const tileClass = () =>
-        `group aspect-square w-full rounded-lg border p-2 transition-colors cursor-pointer flex flex-col items-center justify-center shadow-sm ${
+        [
+            'group aspect-square w-full rounded-lg border p-2',
+            'transition-colors cursor-pointer shadow-sm',
+            'flex flex-col items-center justify-center',
             props.active
                 ? 'border-blue-600 bg-blue-50'
-                : 'border-gray-300 bg-gray-50 hover:border-blue-500'
-        }`
+                : 'border-gray-300 bg-gray-50 hover:border-blue-500',
+        ].join(' ')
     return (
         <div onClick={props.onToggle} class={tileClass()}>
             <svg viewBox='0 0 80 40' class='w-full'>
