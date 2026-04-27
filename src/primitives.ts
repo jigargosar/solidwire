@@ -89,20 +89,17 @@ export function createPointerInteraction(
     let origin: { x: number; y: number; target: EventTarget | null } | null =
         null
     let last: { x: number; y: number } | null = null
+    let detachWindow: (() => void) | null = null
     const [dragging, setDragging] = createSignal(false)
 
     const reset = () => {
         origin = null
         last = null
         setDragging(false)
-    }
-
-    const onDown = (e: PointerEvent) => {
-        if (e.button !== button) return
-        opts.onPointerDown?.(e)
-        if (origin) return
-        origin = { x: e.clientX, y: e.clientY, target: e.target }
-        last = { x: e.clientX, y: e.clientY }
+        if (detachWindow) {
+            detachWindow()
+            detachWindow = null
+        }
     }
 
     const onMove = (e: PointerEvent) => {
@@ -143,6 +140,22 @@ export function createPointerInteraction(
         opts.onPointerCancel?.(e)
     }
 
+    const onDown = (e: PointerEvent) => {
+        if (e.button !== button) return
+        opts.onPointerDown?.(e)
+        if (origin) return
+        origin = { x: e.clientX, y: e.clientY, target: e.target }
+        last = { x: e.clientX, y: e.clientY }
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onCancel)
+        detachWindow = () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            window.removeEventListener('pointercancel', onCancel)
+        }
+    }
+
     const onWheel = (e: WheelEvent) => {
         opts.onWheel?.(e)
     }
@@ -151,17 +164,15 @@ export function createPointerInteraction(
         const t = opts.target()
         if (!t) return
         t.addEventListener('pointerdown', onDown as EventListener)
-        t.addEventListener('pointermove', onMove as EventListener)
-        t.addEventListener('pointerup', onUp as EventListener)
-        t.addEventListener('pointercancel', onCancel as EventListener)
         t.addEventListener('wheel', onWheel as EventListener, { passive: false })
         onCleanup(() => {
             t.removeEventListener('pointerdown', onDown as EventListener)
-            t.removeEventListener('pointermove', onMove as EventListener)
-            t.removeEventListener('pointerup', onUp as EventListener)
-            t.removeEventListener('pointercancel', onCancel as EventListener)
             t.removeEventListener('wheel', onWheel as EventListener)
         })
+    })
+
+    onCleanup(() => {
+        if (detachWindow) detachWindow()
     })
 
     return { dragging }
