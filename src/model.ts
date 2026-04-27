@@ -3,6 +3,7 @@ import { createStore, type Store } from 'solid-js/store'
 import { boundsFromPoints, type Bounds, type Point } from './geom'
 import { assertNever } from './util'
 import { widgetBounds, type Widget, type WidgetId } from './widgets'
+import { createCamera, type Camera } from './camera'
 
 export type Tool = 'rect' | 'button' | 'text' | 'annotation'
 type DrawKind = 'rect' | 'annotation'
@@ -13,24 +14,34 @@ export type Mode =
     | { tag: 'drawing'; kind: DrawKind; start: Point; current: Point }
     | { tag: 'dragging'; id: WidgetId; offset: Point }
 
+export type KeyInput = {
+    key: string
+    meta: boolean
+    ctrl: boolean
+    alt: boolean
+}
+
+export interface ModelOpts {
+    screenBounds: () => Bounds | null
+}
+
 // --- MODEL ---
 export interface Model {
     widgets: Store<Widget[]>
     mode: Accessor<Mode>
+    camera: Camera
     selectedWidgetBounds: Accessor<Bounds | null>
     previewRect: Accessor<Bounds | null>
-    worldBounds: Accessor<Bounds | null>
     activeTool: () => Tool | null
     toggleTool: (tool: Tool) => void
-    cancel: () => void
-    deleteSelected: () => void
     canvasPointerDown: (p: Point) => void
     widgetPointerDown: (id: WidgetId, cursor: Point) => void
     pointerMove: (p: Point) => void
     pointerUp: () => void
+    keyDown: (k: KeyInput) => void
 }
 
-export function createModel(): Model {
+export function createModel(opts: ModelOpts): Model {
     const newId = (): WidgetId => crypto.randomUUID()
 
     const [widgets, setWidgets] = createStore<Widget[]>([
@@ -72,6 +83,8 @@ export function createModel(): Model {
         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
     })
 
+    const camera = createCamera({ worldBounds, screenBounds: opts.screenBounds })
+
     const activeTool = (): Tool | null => {
         const m = mode()
         switch (m.tag) {
@@ -104,6 +117,14 @@ export function createModel(): Model {
         if (mode().tag === 'dragging') return
         setWidgets((ws) => ws.filter((w) => w.id !== id))
         setSelectedId(null)
+    }
+
+    const keyDown = (k: KeyInput) => {
+        const modified = k.meta || k.ctrl || k.alt
+        if (k.key === 'Escape') cancel()
+        if ((k.key === 'Delete' || k.key === 'Backspace') && !modified) deleteSelected()
+        if (k.key === 'r' && !modified) camera.reset()
+        if (k.key === 'f' && !modified) camera.fit()
     }
 
     const canvasPointerDown = (p: Point) => {
@@ -204,16 +225,15 @@ export function createModel(): Model {
     return {
         widgets,
         mode,
+        camera,
         selectedWidgetBounds,
         previewRect,
-        worldBounds,
         activeTool,
         toggleTool,
-        cancel,
-        deleteSelected,
         canvasPointerDown,
         widgetPointerDown,
         pointerMove,
         pointerUp,
+        keyDown,
     }
 }

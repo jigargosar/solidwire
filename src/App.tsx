@@ -1,10 +1,9 @@
 import { onCleanup, Show, type Accessor } from 'solid-js'
-import { createModel, type Model } from './model'
+import { createModel, type Model, type KeyInput } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
 import { Widgets, type WidgetId } from './widgets'
 import { Toolbar } from './toolbar'
-import { createCamera, type Camera } from './camera'
 
 function GridBackground() {
     return (
@@ -57,12 +56,11 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
 
 function Canvas(props: {
     model: Model
-    camera: Camera
     setRef: (el: SVGSVGElement) => void
     onDragStart: (id: WidgetId, e: PointerEvent) => void
 }) {
     const transform = () =>
-        `translate(${props.camera.tx()}, ${props.camera.ty()}) scale(${props.camera.scale()})`
+        `translate(${props.model.camera.tx()}, ${props.model.camera.ty()}) scale(${props.model.camera.scale()})`
     return (
         <svg
             ref={props.setRef}
@@ -107,18 +105,9 @@ function createCanvasCoords() {
     return { setRef, toLocal, isCanvas, getViewport }
 }
 
-function installGlobalKeys(handlers: {
-    cancel: () => void
-    deleteSelected: () => void
-    reset: () => void
-    fit: () => void
-}) {
+function installGlobalKeys(keyDown: (k: KeyInput) => void) {
     const handleKey = (e: KeyboardEvent) => {
-        const modified = e.metaKey || e.ctrlKey || e.altKey
-        if (e.key === 'Escape') handlers.cancel()
-        if ((e.key === 'Delete' || e.key === 'Backspace') && !modified) handlers.deleteSelected()
-        if (e.key === 'r' && !modified) handlers.reset()
-        if (e.key === 'f' && !modified) handlers.fit()
+        keyDown({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey })
     }
     window.addEventListener('keydown', handleKey)
     onCleanup(() => window.removeEventListener('keydown', handleKey))
@@ -132,7 +121,6 @@ const TOOLBAR_W = 140
 const FIT_PAD = 24
 
 export default function App() {
-    const model = createModel()
     const { setRef, toLocal, isCanvas, getViewport } = createCanvasCoords()
 
     const getScreenBounds = (): Bounds | null => {
@@ -146,23 +134,15 @@ export default function App() {
         }
     }
 
-    const camera = createCamera({
-        worldBounds: model.worldBounds,
-        screenBounds: getScreenBounds,
-    })
+    const model = createModel({ screenBounds: getScreenBounds })
 
-    installGlobalKeys({
-        cancel: model.cancel,
-        deleteSelected: model.deleteSelected,
-        reset: camera.reset,
-        fit: camera.fit,
-    })
+    installGlobalKeys(model.keyDown)
 
     let pan: PanGesture | null = null
 
     const toWorld = (e: { clientX: number; clientY: number }): Point | null => {
         const p = toLocal(e)
-        return p ? camera.screenToWorld(p) : null
+        return p ? model.camera.screenToWorld(p) : null
     }
 
     const onDragStart = (id: WidgetId, e: PointerEvent) => {
@@ -197,7 +177,7 @@ export default function App() {
                         const dy = e.clientY - pan.startY
                         if (Math.hypot(dx, dy) > PAN_THRESHOLD) pan.panning = true
                     }
-                    if (pan.panning) camera.panBy(e.movementX, e.movementY)
+                    if (pan.panning) model.camera.panBy(e.movementX, e.movementY)
                     return
                 }
                 const p = toWorld(e)
@@ -219,13 +199,13 @@ export default function App() {
                 if (!isCanvas(e.target)) return
                 e.preventDefault()
                 const p = toLocal(e)
-                if (p) camera.zoomByDelta(p, e.deltaY)
+                if (p) model.camera.zoomByDelta(p, e.deltaY)
             }}
         >
             <Toolbar model={model} />
-            <Canvas model={model} camera={camera} setRef={setRef} onDragStart={onDragStart} />
+            <Canvas model={model} setRef={setRef} onDragStart={onDragStart} />
             <div class='absolute top-3 right-3 z-10 rounded-md border border-gray-400 bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 shadow-sm pointer-events-none'>
-                {Math.round(camera.scale() * 100)}%
+                {Math.round(model.camera.scale() * 100)}%
             </div>
         </main>
     )
