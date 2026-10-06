@@ -23,7 +23,10 @@ export type KeyInput = {
 
 export interface ModelOpts {
     screenBounds: () => Bounds | null
+    viewport: () => { w: number; h: number } | null
 }
+
+const PAN_THRESHOLD = 3
 
 // --- MODEL ---
 export interface Model {
@@ -35,8 +38,7 @@ export interface Model {
     activeTool: () => Tool | null
     toggleTool: (tool: Tool) => void
     onCanvasPointerDown: (p: Point) => void
-    OnWidgetPointerDown: (id: WidgetId, cursor: Point) => void
-    onPointerMove: (p: Point) => void
+    onPointerMove: (p: Point, dx: number, dy: number, primaryDown: boolean) => void
     OnPointerUp: () => void
     onKeyDown: (k: KeyInput) => void
 }
@@ -85,6 +87,8 @@ export function createModel(opts: ModelOpts): Model {
 
     const camera = createCamera({ worldBounds, screenBounds: opts.screenBounds })
 
+    let panState: { startX: number; startY: number; panning: boolean } | null = null
+
     const activeTool = (): Tool | null => {
         const m = mode()
         switch (m.tag) {
@@ -127,29 +131,65 @@ export function createModel(opts: ModelOpts): Model {
         if (k.key === 'f' && !modified) camera.fit()
     }
 
+    const hitTest = (world: Point): Widget | null => {
+        for (let i = widgets.length - 1; i >= 0; i--) {
+            const w = widgets[i]
+            const b = widgetBounds(w)
+            if (
+                world.x >= b.x &&
+                world.x <= b.x + b.w &&
+                world.y >= b.y &&
+                world.y <= b.y + b.h
+            ) {
+                return w
+            }
+        }
+        return null
+    }
+
     const onCanvasPointerDown = (p: Point) => {
         const m = mode()
-        if (m.tag !== 'armed') {
-            if (m.tag === 'idle') setSelectedId(null)
+        if (m.tag === 'idle') {
+            const world = camera.screenToWorld(p)
+            const hit = hitTest(world)
+            if (hit) {
+                setSelectedId(hit.id)
+                setMode({
+                    tag: 'dragging',
+                    id: hit.id,
+                    offset: { x: world.x - hit.x, y: world.y - hit.y },
+                })
+            } else {
+                panState = { startX: p.x, startY: p.y, panning: false }
+            }
             return
         }
+        if (m.tag !== 'armed') return
+        const world = camera.screenToWorld(p)
         switch (m.tool) {
             case 'rect':
-                setMode({ tag: 'drawing', kind: 'rect', start: p, current: p })
+                setMode({ tag: 'drawing', kind: 'rect', start: world, current: world })
                 return
             case 'annotation':
-                setMode({ tag: 'drawing', kind: 'annotation', start: p, current: p })
+                setMode({ tag: 'drawing', kind: 'annotation', start: world, current: world })
                 return
             case 'button':
                 setWidgets((ws) => [
                     ...ws,
-                    { tag: 'button', id: newId(), x: p.x - 120, y: p.y - 40, w: 240, h: 80 },
+                    {
+                        tag: 'button',
+                        id: newId(),
+                        x: world.x - 120,
+                        y: world.y - 40,
+                        w: 240,
+                        h: 80,
+                    },
                 ])
                 return
             case 'text':
                 setWidgets((ws) => [
                     ...ws,
-                    { tag: 'text', id: newId(), x: p.x, y: p.y, content: 'Text' },
+                    { tag: 'text', id: newId(), x: world.x, y: world.y, content: 'Text' },
                 ])
                 return
             default:
@@ -157,23 +197,35 @@ export function createModel(opts: ModelOpts): Model {
         }
     }
 
-    const OnWidgetPointerDown = (id: WidgetId, cursor: Point) => {
-        if (mode().tag !== 'idle') return
-        const widget = widgets.find((w) => w.id === id)
-        if (!widget) return
-        setSelectedId(id)
-        setMode({ tag: 'dragging', id, offset: { x: cursor.x - widget.x, y: cursor.y - widget.y } })
-    }
-
-    const onPointerMove = (p: Point) => {
+    const onPointerMove = (p: Point, dx: number, dy: number, primaryDown: boolean) => {
+        if (panState) {
+            if (!primaryDown) {
+                panState = null
+                return
+            }
+            if (!panState.panning) {
+                const sdx = p.x - panState.startX
+                const sdy = p.y - panState.startY
+                if (Math.hypot(sdx, sdy) > PAN_THRESHOLD) panState.panning = true
+            }
+            if (panState.panning) camera.panBy(dx, dy)
+            return
+        }
         const m = mode()
         switch (m.tag) {
-            case 'dragging':
-                setWidgets((w) => w.id === m.id, { x: p.x - m.offset.x, y: p.y - m.offset.y })
+            case 'dragging': {
+                const world = camera.screenToWorld(p)
+                setWidgets(
+                    (w) => w.id === m.id,
+                    { x: world.x - m.offset.x, y: world.y - m.offset.y },
+                )
                 return
-            case 'drawing':
-                setMode({ tag: 'drawing', kind: m.kind, start: m.start, current: p })
+            }
+            case 'drawing': {
+                const world = camera.screenToWorld(p)
+                setMode({ tag: 'drawing', kind: m.kind, start: m.start, current: world })
                 return
+            }
             case 'idle':
             case 'armed':
                 return
@@ -183,6 +235,12 @@ export function createModel(opts: ModelOpts): Model {
     }
 
     const OnPointerUp = () => {
+        if (panState) {
+            const wasTap = !panState.panning
+            panState = null
+            if (wasTap) setSelectedId(null)
+            return
+        }
         const m = mode()
         switch (m.tag) {
             case 'drawing': {
@@ -231,7 +289,6 @@ export function createModel(opts: ModelOpts): Model {
         activeTool,
         toggleTool,
         onCanvasPointerDown,
-        OnWidgetPointerDown,
         onPointerMove,
         OnPointerUp,
         onKeyDown,

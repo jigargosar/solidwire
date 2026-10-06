@@ -2,7 +2,7 @@ import { onCleanup, Show, type Accessor } from 'solid-js'
 import { createModel, type Model, type KeyInput } from './model'
 import type { Bounds, Point } from './geom'
 import { roughRect, strokeColor } from './rough'
-import { Widgets, type WidgetId } from './widgets'
+import { Widgets } from './widgets'
 import { Toolbar } from './toolbar'
 
 function GridBackground() {
@@ -54,11 +54,7 @@ function SelectionOverlay(props: { bounds: Accessor<Bounds | null> }) {
     )
 }
 
-function Canvas(props: {
-    model: Model
-    setRef: (el: SVGSVGElement) => void
-    onDragStart: (id: WidgetId, e: PointerEvent) => void
-}) {
+function Canvas(props: { model: Model; setRef: (el: SVGSVGElement) => void }) {
     const transform = () =>
         `translate(${props.model.camera.tx()}, ${props.model.camera.ty()}) scale(${props.model.camera.scale()})`
     return (
@@ -71,7 +67,6 @@ function Canvas(props: {
                 <Widgets
                     widgets={props.model.widgets}
                     cursor={() => (props.model.mode().tag === 'idle' ? 'cursor-move' : '')}
-                    onDragStart={props.onDragStart}
                 />
                 <DrawPreview rect={props.model.previewRect} />
                 <SelectionOverlay bounds={props.model.selectedWidgetBounds} />
@@ -113,10 +108,6 @@ function installGlobalKeys(keyDown: (k: KeyInput) => void) {
     onCleanup(() => window.removeEventListener('keydown', handleKey))
 }
 
-const PAN_THRESHOLD = 3
-
-type PanGesture = { startX: number; startY: number; panning: boolean }
-
 const TOOLBAR_W = 140
 const FIT_PAD = 24
 
@@ -134,24 +125,9 @@ export default function App() {
         }
     }
 
-    const model = createModel({ screenBounds: getScreenBounds })
+    const model = createModel({ screenBounds: getScreenBounds, viewport: getViewport })
 
     installGlobalKeys(model.onKeyDown)
-
-    let pan: PanGesture | null = null
-
-    const toWorld = (e: { clientX: number; clientY: number }): Point | null => {
-        const p = toLocal(e)
-        return p ? model.camera.screenToWorld(p) : null
-    }
-
-    const onDragStart = (id: WidgetId, e: PointerEvent) => {
-        if (model.mode().tag !== 'idle') return
-        const p = toWorld(e)
-        if (!p) return
-        e.stopPropagation()
-        model.OnWidgetPointerDown(id, p)
-    }
 
     return (
         <main
@@ -159,41 +135,14 @@ export default function App() {
             style={{ 'touch-action': 'none' }}
             onPointerDown={(e) => {
                 if (!isCanvas(e.target)) return
-                if (model.mode().tag === 'idle') {
-                    pan = { startX: e.clientX, startY: e.clientY, panning: false }
-                    return
-                }
-                const p = toWorld(e)
+                const p = toLocal(e)
                 if (p) model.onCanvasPointerDown(p)
             }}
             onPointerMove={(e) => {
-                if (pan) {
-                    if (!(e.buttons & 1)) {
-                        pan = null
-                        return
-                    }
-                    if (!pan.panning) {
-                        const dx = e.clientX - pan.startX
-                        const dy = e.clientY - pan.startY
-                        if (Math.hypot(dx, dy) > PAN_THRESHOLD) pan.panning = true
-                    }
-                    if (pan.panning) model.camera.panBy(e.movementX, e.movementY)
-                    return
-                }
-                const p = toWorld(e)
-                if (p) model.onPointerMove(p)
+                const p = toLocal(e)
+                if (p) model.onPointerMove(p, e.movementX, e.movementY, !!(e.buttons & 1))
             }}
-            onPointerUp={(e) => {
-                if (pan) {
-                    if (!pan.panning) {
-                        const p = toWorld(e)
-                        if (p) model.onCanvasPointerDown(p)
-                    }
-                    pan = null
-                    return
-                }
-                model.OnPointerUp()
-            }}
+            onPointerUp={() => model.OnPointerUp()}
             onWheel={(e) => {
                 if (e.ctrlKey || e.metaKey) e.preventDefault()
                 if (!isCanvas(e.target)) return
@@ -203,7 +152,7 @@ export default function App() {
             }}
         >
             <Toolbar model={model} />
-            <Canvas model={model} setRef={setRef} onDragStart={onDragStart} />
+            <Canvas model={model} setRef={setRef} />
             <div class='absolute top-3 right-3 z-10 rounded-md border border-gray-400 bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 shadow-sm pointer-events-none'>
                 {Math.round(model.camera.scale() * 100)}%
             </div>
